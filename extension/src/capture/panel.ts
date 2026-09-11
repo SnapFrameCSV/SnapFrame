@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { resolveCaptureSource } from './source';
-import { buildFrameSvg } from '../frame/svg';
+import { buildFrameSvg, type TextRun } from '../frame/svg';
 import { readFrameSettings, readExportSettings } from '../frame/settings';
 import { buildExportFileName } from '../export/filename';
 import { renderShell } from '../webview/shell';
@@ -126,8 +126,13 @@ function ensureConfigListener(context: vscode.ExtensionContext, session: Session
 interface PanelMessage {
   type: string;
   html?: string;
+  lines?: TextRun[][];
   width?: number;
   height?: number;
+  fontFamily?: string;
+  fontSize?: number;
+  color?: string;
+  background?: string;
   fileName?: string;
   lineCount?: number;
   bytes?: string;
@@ -236,11 +241,15 @@ async function handleMessage(session: Session, message: PanelMessage): Promise<v
   if (message.type === 'measured') {
     const svg = buildFrameSvg(
       {
-        html: message.html ?? '',
+        lines: message.lines ?? [],
         width: message.width ?? 0,
         height: message.height ?? 0,
         startLine: session.capture?.startLine ?? 1,
         lineCount: message.lineCount ?? 1,
+        fontFamily: message.fontFamily ?? 'monospace',
+        fontSize: message.fontSize ?? 14,
+        color: message.color ?? '#d4d4d4',
+        background: message.background ?? '#1e1e1e',
       },
       message.fileName ?? '',
       readFrameSettings(),

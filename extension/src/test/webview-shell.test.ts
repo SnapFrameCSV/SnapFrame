@@ -4,65 +4,29 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { renderShell } from '../webview/shell';
-import { buildFrameSvg, type FrameSettings } from '../frame/svg';
+import { buildFrameSvg, type FrameContent, type FrameSettings, type TextRun } from '../frame/svg';
 
 /**
- * Golden-image suite, part 1 (BUILD.md Slice 2 sub-step 4): the webview's
- * `<script>` block has never run outside this file's own source-escaping
- * check (src/test/webview-escapes.test.ts) — nothing in this sandbox or in
- * `node:test` runs real browser JS. This file loads the actual shell HTML in
- * headless Chromium via Playwright and drives it exactly as the extension
- * host would: paste-fallback on load, a `render` message, then an `svg`
- * message.
+ * Golden-image suite (BUILD.md Slice 2 sub-step 4): loads the real webview
+ * shell in headless Chromium via Playwright and drives it exactly as the
+ * extension host does — paste-fallback on load, a `render` message, then
+ * the `svg` message built from what the shell measured — and checks that a
+ * decodable PNG of the right size and colours comes back. Nothing in this
+ * sandbox or in `node:test` runs browser JS otherwise, so this is the only
+ * place the paste-fallback, DOM-walk, measure, dims-regex and rasterise
+ * paths are exercised for real.
  *
- * Running this for the first time found a real, product-blocking defect —
- * see "KNOWN BUG" below — rather than the escaping-class bug runs 6-7 found.
- * Full cross-OS golden pixel-diff (the design's stated acceptance criterion)
- * still waits on that bug being fixed first: there is nothing meaningful to
- * pixel-compare while export cannot produce an image at all. See STATE.md
- * "Next run should" for the fix this unblocks.
+ * History: the first version of this file found that the original
+ * `<foreignObject>`-based frame could never be exported — browsers
+ * unconditionally taint any canvas such an SVG image is drawn into. The
+ * frame is now native SVG text (see frame/svg.ts); the "produces a real PNG"
+ * assertions below are the regression guard for that.
  */
-
-/**
- * KNOWN BUG (found running this suite for the first time): every Export PNG
- * path landed in runs 5-8 (button click and quickSnap's auto-export alike)
- * fails in a real browser. Root cause, isolated with a minimal repro outside
- * this codebase: `buildFrameSvg` embeds the code block in an SVG
- * `<foreignObject>`, and per the Canvas/SVG spec, rasterising *any* image
- * whose SVG source contains a `<foreignObject>` descendant unconditionally
- * taints the canvas ("Tainted canvases may not be exported" on
- * `canvas.toBlob`/`toDataURL`) — this is not an origin/CORS/CSP check (it
- * reproduces with no CSP at all, same-origin, blob: and data: URLs alike)
- * and there is no opt-out; only *not* using foreignObject as the rasterised
- * image source avoids it. This is a recent-ish (~2023) browser hardening
- * change, not new code in this repo, so a real VS Code webview (Electron's
- * bundled Chromium, evergreen) almost certainly hits it too — every run
- * since 5 that reported PNG export as "done" could only verify the pure
- * `buildFrameSvg` output and the filename/settings logic, never a real
- * rasterisation, for exactly the reason sub-step 4 exists.
- *
- * The fix is architectural, not a one-line patch: stop using foreignObject
- * as the *rasterised* image source. `buildFrameSvg`'s output can still be
- * shown directly in the DOM for the live preview (inline SVG display never
- * hits this — only converting to a canvas image source does), but the
- * export path needs the code drawn as native SVG `<text>`/`<tspan>` runs
- * (one run per highlighted span, consecutive tspans with no x/y flow inline
- * automatically, matching HTML layout) instead of one blob of foreignObject
- * HTML — same technique `buildLineNumbers` already uses for the gutter,
- * which is plain SVG text and does not taint. That needs the webview to
- * walk the measured capture's DOM (text nodes + nearest ancestor's resolved
- * color/font-style/font-weight, grouped by line) instead of handing
- * `measure.innerHTML` straight to `buildFrameSvg`. Left for the next run;
- * this test pins today's actual (broken) behaviour so the fix has a
- * regression test to flip green.
- */
-const EXPECTED_TAINT_MESSAGE = "Failed to execute 'toBlob' on 'HTMLCanvasElement': Tainted canvases may not be exported.";
 
 // The sandbox this suite develops in ships a pinned Chromium build outside
-// Playwright's own download cache (see the environment notes in this
-// session); prefer it over triggering a download, which this sandbox's
-// network policy blocks for most hosts. CI has no such path, so it installs
-// its own Chromium (see .github/workflows/ci.yml) and this falls through to
+// Playwright's own download cache; prefer it over triggering a download,
+// which this sandbox's network policy blocks. CI has no such path, installs
+// its own Chromium (see .github/workflows/ci.yml) and falls through to
 // Playwright's default resolution.
 const SANDBOX_CHROMIUM = '/opt/pw-browsers/chromium';
 
@@ -71,13 +35,24 @@ function launchOptions(): { executablePath?: string } {
 }
 
 // A fixed URL fulfilled locally (never actually fetched) rather than a
-// data: navigation: a data: document has an opaque origin, which makes the
-// KNOWN BUG above reproduce even more aggressively (opaque-origin blob:
-// URLs taint canvases on their own, on top of the foreignObject rule),
-// muddying which cause is which. Routing a real https URL isolates the
-// foreignObject cause cleanly while still giving addInitScript a real
-// navigation to hook, closer to a real webview's vscode-webview:// origin.
+// data: navigation: a data: document has an opaque origin, and blob: URLs
+// minted from one taint canvases on their own, which would mask real
+// problems in the export path. Routing a real https URL keeps the origin
+// ordinary — like a real webview's vscode-webview:// origin — while still
+// giving addInitScript a real navigation to hook.
 const SHELL_URL = 'https://snapframe.invalid/preview';
+
+interface Measured {
+  lines: TextRun[][];
+  width: number;
+  height: number;
+  fontFamily: string;
+  fontSize: number;
+  color: string;
+  background: string;
+  fileName: string;
+  lineCount: number;
+}
 
 async function loadShell(browser: Browser, quick: boolean): Promise<Page> {
   const page = await browser.newPage();
@@ -94,6 +69,7 @@ async function loadShell(browser: Browser, quick: boolean): Promise<Page> {
   const html = renderShell('https://vscode-resource.test', quick);
   await page.route(SHELL_URL, (route) => route.fulfill({ contentType: 'text/html', body: html }));
   await page.goto(SHELL_URL);
+  await waitForMessageType(page, 'captured-html');
   return page;
 }
 
@@ -101,58 +77,135 @@ function messages(page: Page): Promise<Array<{ type: string; [key: string]: unkn
   return page.evaluate(() => (window as unknown as { __messages: Array<{ type: string }> }).__messages);
 }
 
-function waitForMessageType(page: Page, ...types: string[]): Promise<void> {
-  return page.waitForFunction(
+async function waitForMessageType(page: Page, ...types: string[]): Promise<void> {
+  await page.waitForFunction(
     (wanted) => (window as unknown as { __messages: Array<{ type: string }> }).__messages.some((m) => wanted.includes(m.type)),
     types,
-  ) as unknown as Promise<void>;
+  );
+}
+
+async function render(page: Page, html: string | null, fallbackText: string, fileName: string, rawLineCount: number): Promise<Measured> {
+  await page.evaluate(
+    (args) => {
+      window.postMessage({ type: 'render', ...args }, '*');
+    },
+    { html, fallbackText, fileName, rawLineCount },
+  );
+  await waitForMessageType(page, 'measured');
+  const found = (await messages(page)).find((m) => m.type === 'measured');
+  return found as unknown as Measured;
+}
+
+function toContent(measured: Measured, startLine: number): FrameContent {
+  return {
+    lines: measured.lines,
+    width: measured.width,
+    height: measured.height,
+    startLine,
+    lineCount: measured.lineCount,
+    fontFamily: measured.fontFamily,
+    fontSize: measured.fontSize,
+    color: measured.color,
+    background: measured.background,
+  };
+}
+
+async function sendSvg(page: Page, svg: string, scale: number, autoExport: boolean): Promise<void> {
+  await page.evaluate(
+    (args) => {
+      window.postMessage({ type: 'svg', svg: args.svg, scale: args.scale, copyToClipboardAfterExport: false, autoExport: args.autoExport }, '*');
+    },
+    { svg, scale, autoExport },
+  );
+}
+
+async function exportedPng(page: Page): Promise<Buffer> {
+  await waitForMessageType(page, 'export-png', 'export-failed');
+  const exported = (await messages(page)).find((m) => m.type === 'export-png' || m.type === 'export-failed') as {
+    type: string;
+    bytes?: string;
+    message?: string;
+  };
+  assert.equal(exported.type, 'export-png', exported.message ? `export failed: ${exported.message}` : undefined);
+  const bytes = Buffer.from(exported.bytes ?? '', 'base64');
+  assert.deepEqual([...bytes.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 'starts with the PNG magic number');
+  return bytes;
+}
+
+function pngSize(bytes: Buffer): { width: number; height: number } {
+  // IHDR is always the first chunk: 8-byte signature, 4-byte length, "IHDR", then width and height.
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+/** Decodes a PNG in the page and samples pixels, returned as [r, g, b, a]. */
+async function samplePixels(page: Page, png: Buffer, points: Array<[number, number]>): Promise<number[][]> {
+  return page.evaluate(
+    async (args) => {
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('png decode failed'));
+        img.src = 'data:image/png;base64,' + args.base64;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      return args.points.map(([x, y]) => [...ctx.getImageData(x, y, 1, 1).data]);
+    },
+    { base64: png.toString('base64'), points },
+  );
+}
+
+function svgDims(svg: string): { width: number; height: number } {
+  const match = svg.match(/<svg[^>]*\swidth="(\d+)"[^>]*\sheight="(\d+)"/);
+  assert.ok(match, 'svg carries integer width/height');
+  return { width: Number(match[1]), height: Number(match[2]) };
 }
 
 const TEST_FRAME_SETTINGS: FrameSettings = {
   backgroundType: 'solid',
-  backgroundColor: '#1e1e2e',
+  backgroundColor: '#ff0000',
   backgroundGradient: ['#8caaee', '#ca9ee6'],
   padding: 16,
   shadow: false,
-  cornerRadius: 8,
+  cornerRadius: 0,
   windowControls: true,
   titleBar: true,
-  lineNumbers: false,
+  lineNumbers: true,
 };
 
-test('webview shell: paste-fallback on load and measuring a render message', async () => {
+// What VS Code's "Copy With Syntax Highlighting" puts on the clipboard: a
+// wrapper carrying the editor's font/colours, one <div> per line, <br> for
+// an empty line, and a <span style="color"> per token.
+const HIGHLIGHTED_HTML =
+  '<div style="color: #d4d4d4;background-color: #1e1e1e;font-family: monospace;font-weight: normal;font-size: 14px;line-height: 19px;white-space: pre;">' +
+  '<div><span style="color: #569cd6;">const</span><span style="color: #d4d4d4;"> answer = </span><span style="color: #b5cea8;">42</span><span style="color: #d4d4d4;">;</span></div>' +
+  '<div><br></div>' +
+  '<div><span style="color: #d4d4d4;">  </span><span style="color: #6a9955; font-style: italic;">// done</span></div>' +
+  '</div>';
+
+test('webview shell: paste-fallback on load, then measuring the plain-text fallback', async () => {
   const browser = await chromium.launch(launchOptions());
   try {
     const page = await loadShell(browser, false);
 
     // With no real clipboard permission, execCommand('paste') fails and the
     // shell reports a null capture instead of hanging.
-    await waitForMessageType(page, 'captured-html');
     const initial = await messages(page);
     assert.equal(initial[0]?.type, 'captured-html');
     assert.equal(initial[0]?.html, null);
 
-    // The host sends a `render` message with the plain-text fallback (no
-    // captured HTML); the shell measures it in a real layout engine and
-    // reports the size and row count back.
-    await page.evaluate(() => {
-      window.postMessage(
-        { type: 'render', html: null, fallbackText: 'const answer = 42;\nconsole.log(answer);', fileName: 'demo.ts', rawLineCount: 2 },
-        '*',
-      );
-    });
-    await waitForMessageType(page, 'measured');
-    const afterRender = await messages(page);
-    const measured = afterRender.find((m) => m.type === 'measured') as unknown as {
-      width: number;
-      height: number;
-      lineCount: number;
-      fileName: string;
-    };
+    const measured = await render(page, null, 'const answer = 42;\nconsole.log(answer);', 'demo.ts', 99);
     assert.ok(measured.width > 0, 'measured a positive width');
     assert.ok(measured.height > 0, 'measured a positive height');
     assert.equal(measured.lineCount, 2, 'plain-text fallback line count comes from the text, not rawLineCount');
     assert.equal(measured.fileName, 'demo.ts');
+    assert.deepEqual(measured.lines, [[{ text: 'const answer = 42;' }], [{ text: 'console.log(answer);' }]]);
+    assert.equal(measured.fontSize, 14);
+    assert.equal(measured.color, 'rgb(212, 212, 212)', 'fallback text uses the editor-foreground default');
+    assert.equal(measured.background, 'rgb(30, 30, 30)', 'fallback card uses the editor-background default');
 
     await page.close();
   } finally {
@@ -160,23 +213,21 @@ test('webview shell: paste-fallback on load and measuring a render message', asy
   }
 });
 
-test('webview shell: an svg message with real dimensions reveals the Export PNG button', async () => {
+test('webview shell: syntax-highlighted HTML becomes per-line styled runs with the wrapper defaults stripped', async () => {
   const browser = await chromium.launch(launchOptions());
   try {
     const page = await loadShell(browser, false);
-    await waitForMessageType(page, 'captured-html');
+    const measured = await render(page, HIGHLIGHTED_HTML, 'ignored fallback', 'demo.ts', 3);
 
-    // The host builds the frame SVG the same way capture/panel.ts does; the
-    // shell's dims regex must find the width/height attributes it produces.
-    const svg = buildFrameSvg(
-      { html: '<pre>const answer = 42;\nconsole.log(answer);</pre>', width: 260, height: 84, startLine: 1, lineCount: 2 },
-      'demo.ts',
-      TEST_FRAME_SETTINGS,
-    );
-    await page.evaluate((svgText) => {
-      window.postMessage({ type: 'svg', svg: svgText, scale: 1, copyToClipboardAfterExport: false, autoExport: false }, '*');
-    }, svg);
-    await page.waitForFunction(() => document.getElementById('export-btn')?.style.display === 'inline-block');
+    assert.equal(measured.lineCount, 3, 'highlighted HTML row count is the raw selection span');
+    assert.equal(measured.color, 'rgb(212, 212, 212)');
+    assert.equal(measured.background, 'rgb(30, 30, 30)');
+    assert.equal(measured.fontSize, 14);
+    assert.deepEqual(measured.lines, [
+      [{ text: 'const', color: 'rgb(86, 156, 214)' }, { text: ' answer = ' }, { text: '42', color: 'rgb(181, 206, 168)' }, { text: ';' }],
+      [],
+      [{ text: '  ' }, { text: '// done', color: 'rgb(106, 153, 85)', italic: true }],
+    ]);
 
     await page.close();
   } finally {
@@ -184,35 +235,54 @@ test('webview shell: an svg message with real dimensions reveals the Export PNG 
   }
 });
 
-test('webview shell: KNOWN BUG — clicking Export PNG fails because buildFrameSvg uses foreignObject', async () => {
+test('webview shell: full pipeline exports a PNG of the frame at 1x and 2x', async () => {
   const browser = await chromium.launch(launchOptions());
   try {
     const page = await loadShell(browser, false);
-    await waitForMessageType(page, 'captured-html');
+    const measured = await render(page, HIGHLIGHTED_HTML, '', 'demo.ts', 3);
+    const svg = buildFrameSvg(toContent(measured, 40), 'demo.ts', TEST_FRAME_SETTINGS);
+    const dims = svgDims(svg);
 
-    const svg = buildFrameSvg(
-      { html: '<pre>const answer = 42;\nconsole.log(answer);</pre>', width: 260, height: 84, startLine: 1, lineCount: 2 },
-      'demo.ts',
-      TEST_FRAME_SETTINGS,
-    );
-    await page.evaluate((svgText) => {
-      window.postMessage({ type: 'svg', svg: svgText, scale: 1, copyToClipboardAfterExport: false, autoExport: false }, '*');
-    }, svg);
+    await sendSvg(page, svg, 1, false);
     await page.waitForFunction(() => document.getElementById('export-btn')?.style.display === 'inline-block');
-
     await page.click('#export-btn');
-    await waitForMessageType(page, 'export-png', 'export-failed');
-    const exported = (await messages(page)).find((m) => m.type === 'export-png' || m.type === 'export-failed') as {
-      type: string;
-      message?: string;
-    };
+    const png1x = await exportedPng(page);
+    assert.deepEqual(pngSize(png1x), dims, '1x PNG matches the SVG size');
 
-    // This assertion is the regression pin: once the foreignObject rewrite
-    // described above lands, this flips to 'export-png' and the byte-level
-    // PNG-magic-number checks from the pre-fix version of this file should
-    // come back.
-    assert.equal(exported.type, 'export-failed');
-    assert.equal(exported.message, EXPECTED_TAINT_MESSAGE);
+    // Frame background is solid red; the card (16px in) is the captured
+    // editor background; the title bar's first window dot is red-ish too.
+    const [corner, card, dot] = await samplePixels(page, png1x, [
+      [2, 2],
+      [dims.width - 20, dims.height - 20],
+      [16 + 20, 16 + 18],
+    ]);
+    assert.deepEqual(corner, [255, 0, 0, 255], 'frame background pixel is the configured solid colour');
+    assert.deepEqual(card, [30, 30, 30, 255], 'card pixel is the captured editor background');
+    assert.deepEqual(dot, [255, 95, 86, 255], 'first window dot is drawn');
+
+    // Text actually rendered: some pixel in the first text row is neither
+    // background nor card colour.
+    const rowY = 16 + 36 + 16 + Math.floor(measured.height / 3 / 2);
+    const gutter = String(42).length * 9 + 20;
+    const textStart = 16 + gutter + 16;
+    const row = await samplePixels(
+      page,
+      png1x,
+      Array.from({ length: 40 }, (_, i) => [textStart + i, rowY] as [number, number]),
+    );
+    assert.ok(
+      row.some(([r, g, b]) => !(r === 30 && g === 30 && b === 30)),
+      'at least one pixel in the first code row is not the card colour, so text was drawn',
+    );
+
+    // 2x: same frame, double the pixels.
+    await page.evaluate(() => {
+      (window as unknown as { __messages: unknown[] }).__messages.length = 0;
+    });
+    await sendSvg(page, svg, 2, false);
+    await page.click('#export-btn');
+    const png2x = await exportedPng(page);
+    assert.deepEqual(pngSize(png2x), { width: dims.width * 2, height: dims.height * 2 }, '2x PNG is double the SVG size');
 
     await page.close();
   } finally {
@@ -220,27 +290,34 @@ test('webview shell: KNOWN BUG — clicking Export PNG fails because buildFrameS
   }
 });
 
-test('webview shell: quick snap auto-export hits the same KNOWN BUG, still returns focus cleanly', async () => {
+test('webview shell: quick snap auto-exports on the svg message without ever showing the button', async () => {
   const browser = await chromium.launch(launchOptions());
   try {
     const page = await loadShell(browser, true);
-    await waitForMessageType(page, 'captured-html');
+    const measured = await render(page, null, 'quick();', 'quick.ts', 1);
+    const svg = buildFrameSvg(toContent(measured, 1), 'quick.ts', TEST_FRAME_SETTINGS);
 
-    const svg = buildFrameSvg({ html: '<pre>quick();</pre>', width: 120, height: 40, startLine: 1, lineCount: 1 }, 'quick.ts', TEST_FRAME_SETTINGS);
-    await page.evaluate((svgText) => {
-      window.postMessage({ type: 'svg', svg: svgText, scale: 1, copyToClipboardAfterExport: false, autoExport: true }, '*');
-    }, svg);
-
-    await waitForMessageType(page, 'export-png', 'export-failed');
-    const exported = (await messages(page)).find((m) => m.type === 'export-png' || m.type === 'export-failed') as {
-      type: string;
-      message?: string;
-    };
-    assert.equal(exported.type, 'export-failed');
-    assert.equal(exported.message, EXPECTED_TAINT_MESSAGE);
-    // Quick-snap mode never shows the toolbar, bug or no bug.
+    await sendSvg(page, svg, 1, true);
+    const png = await exportedPng(page);
+    assert.deepEqual(pngSize(png), svgDims(svg));
     const buttonDisplay = await page.evaluate(() => document.getElementById('export-btn')?.style.display);
     assert.equal(buttonDisplay, 'none');
+
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('webview shell: an svg without measurable dimensions reports export-failed instead of hanging', async () => {
+  const browser = await chromium.launch(launchOptions());
+  try {
+    const page = await loadShell(browser, true);
+    await sendSvg(page, '<svg xmlns="http://www.w3.org/2000/svg"></svg>', 1, true);
+    await waitForMessageType(page, 'export-png', 'export-failed');
+    const exported = (await messages(page)).find((m) => m.type === 'export-failed');
+    assert.ok(exported, 'reported the failure');
+    assert.equal(exported.message, 'frame has no measurable size');
 
     await page.close();
   } finally {

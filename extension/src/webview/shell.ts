@@ -35,7 +35,8 @@ export function renderShell(cspSource: string, quick: boolean): string {
       font-family: var(--vscode-editor-font-family, monospace);
       font-size: var(--vscode-editor-font-size, 14px);
       line-height: 1.5;
-      padding: 16px;
+      color: var(--vscode-editor-foreground, #d4d4d4);
+      background: var(--vscode-editor-background, #1e1e1e);
     }
     #preview { padding: 16px; overflow: auto; }
     #preview svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
@@ -196,7 +197,124 @@ export function renderShell(cspSource: string, quick: boolean): string {
       // raw selection's line span; the plain-text fallback went through
       // soft-wrap, so its row count must come from the text actually shown.
       const lineCount = html ? rawLineCount : Math.max(1, fallbackText.split('\\n').length);
-      vscode.postMessage({ type: 'measured', html: measure.innerHTML, width, height, fileName, lineCount });
+
+      // VS Code's highlighter wraps the copy in one element carrying the
+      // editor's font, colour and background as inline styles; the fallback
+      // <pre> inherits #measure's. Either way, read the resolved values.
+      const probe = measure.firstElementChild || measure;
+      const probeStyle = getComputedStyle(probe);
+      const fontFamily = probeStyle.fontFamily || 'monospace';
+      const fontSize = parseFloat(probeStyle.fontSize) || 14;
+      const color = probeStyle.color || '#d4d4d4';
+      const background = opaqueBackground(probeStyle) || opaqueBackground(getComputedStyle(measure)) || '#1e1e1e';
+
+      const lines = extractLines(measure, lineCount);
+      vscode.postMessage({ type: 'measured', lines, width, height, fontFamily, fontSize, color, background, fileName, lineCount });
+    }
+
+    function opaqueBackground(style) {
+      const value = style.backgroundColor;
+      if (!value || value === 'transparent' || /^rgba\\(.*,\\s*0\\)$/.test(value)) {
+        return null;
+      }
+      return value;
+    }
+
+    // Flattens the measured DOM into rows of styled text runs. Rows come
+    // from block boundaries (VS Code emits one <div> per line, with <br> for
+    // an empty one) and from literal newlines (the plain-text fallback's
+    // <pre>). Each run carries only the style that differs from the
+    // wrapper's defaults, resolved via getComputedStyle so nested spans and
+    // inherited styles come out right. Trimmed/padded to lineCount so the
+    // contenteditable convention of a trailing <div><br></div> never adds a
+    // phantom row.
+    function extractLines(root, lineCount) {
+      const rootStyle = getComputedStyle(root.firstElementChild || root);
+      const lines = [[]];
+      let pendingBreak = false;
+
+      function currentLine() {
+        return lines[lines.length - 1];
+      }
+
+      function newLine() {
+        lines.push([]);
+        pendingBreak = false;
+      }
+
+      function pushRun(text, element) {
+        if (!text) {
+          return;
+        }
+        if (pendingBreak) {
+          newLine();
+        }
+        const style = getComputedStyle(element);
+        const run = { text: text };
+        if (style.color && style.color !== rootStyle.color) {
+          run.color = style.color;
+        }
+        const weight = parseInt(style.fontWeight, 10);
+        if ((weight >= 600 || style.fontWeight === 'bold') && !(parseInt(rootStyle.fontWeight, 10) >= 600)) {
+          run.bold = true;
+        }
+        if (style.fontStyle === 'italic' && rootStyle.fontStyle !== 'italic') {
+          run.italic = true;
+        }
+        const last = currentLine()[currentLine().length - 1];
+        if (last && last.color === run.color && last.bold === run.bold && last.italic === run.italic) {
+          last.text += text;
+        } else {
+          currentLine().push(run);
+        }
+      }
+
+      function walk(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const parts = node.data.split('\\n');
+          for (let i = 0; i < parts.length; i++) {
+            if (i > 0) {
+              newLine();
+            }
+            pushRun(parts[i], node.parentElement);
+          }
+          return;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          return;
+        }
+        if (node.tagName === 'BR') {
+          if (pendingBreak) {
+            newLine();
+          }
+          pendingBreak = true;
+          return;
+        }
+        const display = getComputedStyle(node).display;
+        const isBlock = display === 'block' || display === 'list-item' || display === 'flex' || display === 'grid';
+        if (isBlock && (currentLine().length > 0 || pendingBreak)) {
+          newLine();
+        }
+        for (let i = 0; i < node.childNodes.length; i++) {
+          walk(node.childNodes[i]);
+        }
+        if (isBlock) {
+          pendingBreak = true;
+        }
+      }
+
+      walk(root);
+      while (lines.length > lineCount) {
+        const tail = lines[lines.length - 1];
+        if (tail.length > 0) {
+          break;
+        }
+        lines.pop();
+      }
+      while (lines.length < lineCount) {
+        lines.push([]);
+      }
+      return lines.slice(0, lineCount);
     }
   </script>
 </body>
