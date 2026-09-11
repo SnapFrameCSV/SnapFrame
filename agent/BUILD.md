@@ -35,7 +35,7 @@ While `STATE.md` says Phase 3: a run may use **up to 45 minutes** of work, and t
 
 ## Slice 4 — Pro features (strictly additive, each behind `isPro()`)
 
-In this order, each its own commit: SVG export → WebP/PDF export and transparent background → 3×/4× scale → named presets (JSON in globalState, import/export) → custom gradients/images and user caption → line highlight/focus-dim and callouts → before/after and side-by-side layouts → terminal-selection capture → batch export and "copy as Markdown image link". The free tier must remain exactly as in Slice 2; add a test that asserts every free command works with `isPro() === false`.
+In this order, each its own commit: SVG export → WebP/PDF export and transparent background → 3×/4× scale → named presets (JSON in globalState, import/export) → custom gradients/images and user caption → line highlight/focus-dim and callouts → **QR code in the image** (operator-approved addition, 2026-09-11: a small QR code placed in a corner of the frame, generated locally from a URL or text the user types — typically the repo, gist or docs link — drawn as vector squares so it stays sharp in SVG/PDF; QR encoding implemented in-house or via a tiny permissive dependency recorded in `LICENSES.md`; no network; record as D16 in `DECISIONS.md` when landed) → before/after and side-by-side layouts → terminal-selection capture → batch export and "copy as Markdown image link". The free tier must remain exactly as in Slice 2; add a test that asserts every free command works with `isPro() === false`. Also add the QR option to the Pro list in `extension/README.md` and `docs/02-design.md` §1 when it lands.
 
 ## Slice 5 — Licence Worker
 
