@@ -45,6 +45,6 @@ Pick **one** small change with the highest expected effect on the design's five 
 5. Commit with a plain-English message and push to `main`.
 6. End the run with the report text (or a two-line summary on non-report days) as your final message — the run-completion notification carries it to the operator.
 
-## Loop-proof mode (until `STATE.md` says step 5.0 is done)
+## Build mode (Phase 3, until `docs/03-launch-readiness.md` exists)
 
-If the repo has no `extension/` folder yet, the whole run is: preflight → append `LOG.md` line "loop proof run OK" → update `STATE.md` → push → final message "Loop proof: cloned, committed, pushed. Ready for step 5.1." If the push fails, the final message must say exactly why (e.g. "No linked GitHub account") so the operator knows gate-02 is still open.
+Step 5.0 (loop proof) is done. While `STATE.md` says Phase 3, follow `agent/BUILD.md` instead of §4 "One improvement": the budget is up to **45 minutes**, the unit of work is one slice or sub-step from `BUILD.md`, and everything else in this runbook (preflight, gate check, ship-and-record, the rules) still applies. Final message on build runs: one line `BUILD: <slice> — <what landed>`, then the diagnostics.
