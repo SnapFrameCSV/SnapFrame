@@ -167,6 +167,13 @@
           "default": true,
           "description": "Show a title bar with the file name above the code."
         },
+        "snapframe.wrapColumn": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200,
+          "default": 0,
+          "description": "Soft-wrap captured lines longer than this many characters. 0 disables wrapping."
+        },
         "snapframe.scale": {
           "type": "number",
           "enum": [
