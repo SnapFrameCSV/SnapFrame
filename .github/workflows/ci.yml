@@ -21,4 +21,32 @@ jobs:
           ! grep -rEn '(sk_live_|rk_live_|whsec_|ghp_|github_pat_|-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY)' --exclude-dir=.git --exclude-dir=.github . || { echo "possible secret committed"; exit 1; }
       - name: Preflight script runs
         run: bash scripts/preflight.sh
-  # Extension and Worker jobs are added when those folders exist (Phase 3, step 5.1+).
+
+  extension:
+    name: Extension
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Package
+        run: npm run package
+      - name: Upload .vsix
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapframe-vsix
+          path: extension/*.vsix
+          if-no-files-found: error
+  # The Worker job is added when worker/ exists (Slice 5).

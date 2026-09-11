@@ -1,0 +1,207 @@
+{
+  "name": "snapframe",
+  "displayName": "Snapframe — Code Screenshot",
+  "description": "Turn a code selection into a clean, shareable PNG that keeps your editor's real theme and font. No accounts, no telemetry, no network.",
+  "version": "0.0.1",
+  "publisher": "snapframe",
+  "pricing": "Trial",
+  "license": "SEE LICENSE IN ../LICENSE",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=22"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "screenshot",
+    "code screenshot",
+    "polacode",
+    "codesnap",
+    "carbon",
+    "snapcode",
+    "snippet",
+    "image",
+    "share code",
+    "social",
+    "png",
+    "svg",
+    "presentation",
+    "documentation",
+    "twitter",
+    "linkedin",
+    "slides",
+    "pull request",
+    "code image",
+    "ray.so"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SnapFrameCSV/snapframe.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SnapFrameCSV/snapframe/issues"
+  },
+  "homepage": "https://github.com/SnapFrameCSV/snapframe#readme",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "snapframe.capture",
+        "title": "Capture Selection",
+        "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.quickSnap",
+        "title": "Quick Snap (last settings)",
+        "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.enterLicence",
+        "title": "Enter Licence Key",
+        "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.buyPro",
+        "title": "Buy Pro…",
+        "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.openSettings",
+        "title": "Open Settings",
+        "category": "Snapframe"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "snapframe.capture",
+        "key": "ctrl+alt+shift+s",
+        "mac": "cmd+alt+shift+s",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "snapframe.quickSnap",
+        "key": "ctrl+alt+shift+q",
+        "mac": "cmd+alt+shift+q",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "snapframe.capture",
+          "group": "9_snapframe@1",
+          "when": "editorHasSelection"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Snapframe",
+      "properties": {
+        "snapframe.background.type": {
+          "type": "string",
+          "enum": [
+            "solid",
+            "gradient"
+          ],
+          "default": "gradient",
+          "description": "Fill behind the code frame: a single colour or a two-colour gradient."
+        },
+        "snapframe.background.color": {
+          "type": "string",
+          "default": "#1e1e2e",
+          "description": "Solid background colour (CSS colour). Used when background.type is \"solid\"."
+        },
+        "snapframe.background.gradient": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "default": [
+            "#8caaee",
+            "#ca9ee6"
+          ],
+          "description": "Start and end colours of the gradient background. Used when background.type is \"gradient\"."
+        },
+        "snapframe.padding": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 256,
+          "default": 32,
+          "description": "Space in pixels between the code frame and the edge of the image."
+        },
+        "snapframe.shadow": {
+          "type": "boolean",
+          "default": true,
+          "description": "Draw a soft drop shadow under the code frame."
+        },
+        "snapframe.cornerRadius": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 64,
+          "default": 12,
+          "description": "Corner radius of the code frame in pixels."
+        },
+        "snapframe.windowControls": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the three macOS-style window dots in the frame's title bar."
+        },
+        "snapframe.lineNumbers": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show line numbers, starting at the first selected line."
+        },
+        "snapframe.titleBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a title bar with the file name above the code."
+        },
+        "snapframe.scale": {
+          "type": "number",
+          "enum": [
+            1,
+            2
+          ],
+          "default": 2,
+          "description": "Export resolution multiplier. 2× is sharper on high-DPI screens."
+        },
+        "snapframe.exportFolder": {
+          "type": "string",
+          "default": "",
+          "description": "Folder where images are saved. Leave empty to be asked each time."
+        },
+        "snapframe.copyToClipboardAfterExport": {
+          "type": "boolean",
+          "default": false,
+          "description": "After exporting, also copy the image to the clipboard."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --external:vscode --outfile=dist/extension.js",
+    "pretest": "tsc -p tsconfig.json",
+    "test": "node --test \"out/test/**/*.test.js\"",
+    "generate-icon": "node scripts/generate-icon.js",
+    "package": "npm run build && node scripts/copy-license.js && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+out/
+*.vsix
+.wrangler/
+extension/LICENSE
+*.log
+.DS_Store

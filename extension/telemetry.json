@@ -1,0 +1,5 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vscode/main/src/vs/platform/telemetry/common/telemetry-schema.json",
+  "description": "Snapframe sends no telemetry and makes no network requests. The only outbound action is the optional 'Buy Pro…' command, which opens a web page in the user's browser and sends nothing from the editor.",
+  "events": {}
+}
