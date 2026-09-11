@@ -90,6 +90,11 @@
         "category": "Snapframe"
       },
       {
+        "command": "snapframe.captureTerminal",
+        "title": "Capture Terminal Selection (Pro)",
+        "category": "Snapframe"
+      },
+      {
         "command": "snapframe.savePreset",
         "title": "Save Preset… (Pro)",
         "category": "Snapframe"

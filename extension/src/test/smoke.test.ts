@@ -107,6 +107,7 @@ test('package.json declares every command the extension registers', () => {
     'snapframe.capture',
     'snapframe.captureAfter',
     'snapframe.captureBefore',
+    'snapframe.captureTerminal',
     'snapframe.deletePreset',
     'snapframe.enterLicence',
     'snapframe.exportPresets',

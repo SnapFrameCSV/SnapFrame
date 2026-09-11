@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { runCapture, runCaptureAfter, runCaptureBefore, runQuickSnap } from './capture/panel';
+import { runCapture, runCaptureAfter, runCaptureBefore, runCaptureTerminal, runQuickSnap } from './capture/panel';
 import { enterLicence, initialiseLicence } from './licence/activate';
 import { applyPreset, deletePreset, exportPresets, importPresets, savePreset } from './presets/commands';
 
@@ -53,6 +53,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('snapframe.captureAfter', () => {
       void runCaptureAfter(context).catch((error: unknown) => {
         void vscode.window.showErrorMessage(`Snapframe: capture failed — ${String(error)}`);
+      });
+    }),
+    vscode.commands.registerCommand('snapframe.captureTerminal', () => {
+      void runCaptureTerminal(context).catch((error: unknown) => {
+        void vscode.window.showErrorMessage(`Snapframe: terminal capture failed — ${String(error)}`);
       });
     }),
   );

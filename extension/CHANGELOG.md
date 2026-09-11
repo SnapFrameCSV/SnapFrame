@@ -17,3 +17,4 @@ All notable changes to Snapframe are listed here. The format follows [Keep a Cha
 - Pro: **Line highlighting** (`snapframe.highlightLines`, e.g. `"12-14, 20"`), **focus-dim** to fade the other lines, and **callouts** — short labels pinned to a line.
 - Pro: a **QR code** under the frame from `snapframe.qr.text` (your repo, gist or docs link), generated on your machine as crisp vector squares.
 - Pro: **Before/after comparisons** — *Capture as 'Before'*, then *Capture as 'After' and Compare* renders both snippets in one image, side by side or stacked, with labels you can change.
+- Pro: **Capture Terminal Selection** — frame text selected in the integrated terminal, titled with the terminal's name.

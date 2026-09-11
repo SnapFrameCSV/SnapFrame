@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { resolveCaptureSource } from './source';
+import { prepareTerminalText } from './terminal';
 import { buildFrameSvg, buildMultiFrameSvg, type FrameContent, type TextRun } from '../frame/svg';
 import { readFrameSettings, readExportSettings, readLayoutSettings, readProFrameOptions } from '../frame/settings';
 import { buildExportFileName } from '../export/filename';
@@ -108,25 +109,66 @@ export function runQuickSnap(context: vscode.ExtensionContext): Promise<void> {
   return startCapture(context, true, 'single');
 }
 
-async function startCapture(context: vscode.ExtensionContext, quick: boolean, role: CaptureRole): Promise<void> {
+/** Text that did not come from an editor (e.g. the terminal): rendered on the plain-text path, never via clipboard HTML. */
+interface PlainSource {
+  text: string;
+  fileName: string;
+  lineCount: number;
+}
+
+/**
+ * `snapframe.captureTerminal` (Pro): the integrated terminal's selection,
+ * copied via VS Code's own command (the only public way to read it), then
+ * rendered on the plain-text path with the terminal's name as the title.
+ */
+export async function runCaptureTerminal(context: vscode.ExtensionContext): Promise<void> {
+  if (!requirePro('Terminal capture')) {
+    return;
+  }
+  const terminal = vscode.window.activeTerminal;
+  if (!terminal) {
+    void vscode.window.showWarningMessage('Snapframe: open a terminal and select some text in it first.');
+    return;
+  }
+  const original = await vscode.env.clipboard.readText();
+  await vscode.commands.executeCommand('workbench.action.terminal.copySelection');
+  const copied = await vscode.env.clipboard.readText();
+  await vscode.env.clipboard.writeText(original);
+  const wrapColumn = vscode.workspace.getConfiguration('snapframe').get<number>('wrapColumn', 0);
+  const prepared = prepareTerminalText(copied === original ? '' : copied, wrapColumn);
+  if (prepared.lineCount === 0) {
+    void vscode.window.showWarningMessage('Snapframe: select some text in the terminal first.');
+    return;
+  }
+  await startCapture(context, false, 'single', { text: prepared.text, fileName: terminal.name || 'terminal', lineCount: prepared.lineCount });
+}
+
+async function startCapture(context: vscode.ExtensionContext, quick: boolean, role: CaptureRole, plain?: PlainSource): Promise<void> {
   const editor = vscode.window.activeTextEditor;
-  if (!editor) {
+  if (!plain && !editor) {
     void vscode.window.showWarningMessage('Snapframe: open a file and place your cursor or make a selection first.');
     return;
   }
 
-  const source = resolveCaptureSource(editor);
   const originalClipboardText = await vscode.env.clipboard.readText();
-  const originalSelection = editor.selection;
-
-  if (editor.selection.isEmpty) {
-    editor.selection = new vscode.Selection(source.range.start, source.range.end);
-  }
-
-  try {
-    await vscode.commands.executeCommand('editor.action.clipboardCopyWithSyntaxHighlightingAction');
-  } finally {
-    editor.selection = originalSelection;
+  let source: LastCapture;
+  let returnTo: ReturnTarget | undefined;
+  if (plain) {
+    source = { html: null, fallbackText: plain.text, fileName: plain.fileName, startLine: 1, rawLineCount: plain.lineCount };
+  } else {
+    const activeEditor = editor as vscode.TextEditor;
+    const resolved = resolveCaptureSource(activeEditor);
+    const originalSelection = activeEditor.selection;
+    if (activeEditor.selection.isEmpty) {
+      activeEditor.selection = new vscode.Selection(resolved.range.start, resolved.range.end);
+    }
+    try {
+      await vscode.commands.executeCommand('editor.action.clipboardCopyWithSyntaxHighlightingAction');
+    } finally {
+      activeEditor.selection = originalSelection;
+    }
+    source = { html: null, fallbackText: resolved.text, fileName: resolved.fileName, startLine: resolved.startLine, rawLineCount: resolved.rawLineCount };
+    returnTo = { document: activeEditor.document, viewColumn: activeEditor.viewColumn, selection: originalSelection };
   }
 
   const session = quick ? createSession(context, true) : getOrCreatePreviewSession(context);
@@ -135,7 +177,7 @@ async function startCapture(context: vscode.ExtensionContext, quick: boolean, ro
     lastComparison = undefined;
   }
   if (quick) {
-    session.returnTo = { document: editor.document, viewColumn: editor.viewColumn, selection: originalSelection };
+    session.returnTo = returnTo;
   }
   session.panel.webview.html = renderShell(session.panel.webview.cspSource, quick);
 
@@ -144,13 +186,8 @@ async function startCapture(context: vscode.ExtensionContext, quick: boolean, ro
       return;
     }
     await vscode.env.clipboard.writeText(originalClipboardText);
-    session.capture = {
-      html: message.html ?? null,
-      fallbackText: source.text,
-      fileName: source.fileName,
-      startLine: source.startLine,
-      rawLineCount: source.rawLineCount,
-    };
+    // A plain source ignores whatever HTML the paste happened to find on the clipboard.
+    session.capture = { ...source, html: plain ? null : (message.html ?? null) };
     sendRender(session);
     readyDisposable.dispose();
   });
