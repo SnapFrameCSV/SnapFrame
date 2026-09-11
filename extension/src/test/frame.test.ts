@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildFrameSvg, FrameContent, FrameSettings } from '../frame/svg';
+import { DEFAULT_PRO_FRAME_OPTIONS, buildFrameSvg, gradientVector, FrameContent, FrameSettings } from '../frame/svg';
 
 const baseSettings: FrameSettings = {
   backgroundType: 'gradient',
@@ -12,6 +12,7 @@ const baseSettings: FrameSettings = {
   windowControls: true,
   titleBar: true,
   lineNumbers: false,
+  pro: DEFAULT_PRO_FRAME_OPTIONS,
 };
 
 // Text block 400x200 sits inside 16px of code padding on every side, so the
@@ -60,11 +61,51 @@ test('buildFrameSvg draws no backdrop at all when the background is transparent'
   assert.match(svg, /rx="12" ry="12" fill="#1e1e1e"/, 'the card itself is still drawn');
 });
 
-test('buildFrameSvg emits gradient stops matching the configured colours', () => {
+test('buildFrameSvg emits gradient stops matching the configured colours on the free diagonal', () => {
   const svg = buildFrameSvg(content, 'index.ts', baseSettings);
-  assert.match(svg, /stop-color="#8caaee"/);
-  assert.match(svg, /stop-color="#ca9ee6"/);
+  assert.match(svg, /<linearGradient id="sf-bg-gradient" x1="0" y1="0" x2="1" y2="1">/);
+  assert.match(svg, /<stop offset="0%" stop-color="#8caaee"/);
+  assert.match(svg, /<stop offset="100%" stop-color="#ca9ee6"/);
   assert.match(svg, /fill="url\(#sf-bg-gradient\)"/);
+});
+
+test('gradientVector maps CSS angles onto edge-to-edge box coordinates', () => {
+  assert.deepEqual(gradientVector(135), { x1: '0', y1: '0', x2: '1', y2: '1' });
+  assert.deepEqual(gradientVector(90), { x1: '0', y1: '0.5', x2: '1', y2: '0.5' });
+  assert.deepEqual(gradientVector(180), { x1: '0.5', y1: '0', x2: '0.5', y2: '1' });
+  assert.deepEqual(gradientVector(0), { x1: '0.5', y1: '1', x2: '0.5', y2: '0' });
+  assert.deepEqual(gradientVector(-90), gradientVector(270));
+});
+
+test('buildFrameSvg (Pro) spaces custom gradient stops evenly along the requested angle', () => {
+  const svg = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { gradientAngle: 90, gradientStops: ['#000000', '#777777', '#ffffff'] } });
+  assert.match(svg, /x1="0" y1="0.5" x2="1" y2="0.5"/);
+  assert.match(svg, /<stop offset="0%" stop-color="#000000"/);
+  assert.match(svg, /<stop offset="50%" stop-color="#777777"/);
+  assert.match(svg, /<stop offset="100%" stop-color="#ffffff"/);
+  assert.doesNotMatch(svg, /#8caaee/, 'background.gradient is overridden');
+});
+
+test('buildFrameSvg (Pro) draws a data-URI background image covering the whole frame, and ignores non-data hrefs', () => {
+  const dataUri = 'data:image/png;base64,iVBORw0KGgo=';
+  const svg = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, backgroundImage: dataUri } });
+  assert.match(svg, new RegExp(`<image href="${dataUri}" x="0" y="0" width="496" height="332" preserveAspectRatio="xMidYMid slice" />`));
+  const unsafe = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, backgroundImage: 'file:///etc/passwd' } });
+  assert.doesNotMatch(unsafe, /<image/);
+});
+
+test('buildFrameSvg (Pro) adds a caption band under the card, positioned and escaped', () => {
+  const caption = { text: '@snap <dev>', color: '#ffcc00', position: 'right' as const };
+  const svg = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, caption } });
+  assert.match(svg, /height="360"/, '332 + a 28px caption band');
+  // x = totalWidth - padding = 464; y sits in the band below the card: 32 + 268 + 16 + 14
+  assert.match(svg, /<text x="464" y="330" text-anchor="end"[^>]*fill="#ffcc00"[^>]*>@snap &lt;dev&gt;<\/text>/);
+  const left = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, caption: { ...caption, position: 'left' } } });
+  assert.match(left, /<text x="32" y="330" text-anchor="start"/);
+  const center = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, caption: { ...caption, position: 'center' } } });
+  assert.match(center, /<text x="248" y="330" text-anchor="middle"/);
+  const blank = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, caption: { ...caption, text: '   ' } } });
+  assert.match(blank, /height="332"/, 'a blank caption adds nothing');
 });
 
 test('buildFrameSvg omits the shadow filter when shadow is off', () => {

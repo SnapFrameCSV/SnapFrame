@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { resolveCaptureSource } from './source';
 import { buildFrameSvg, type TextRun } from '../frame/svg';
-import { readFrameSettings, readExportSettings } from '../frame/settings';
+import { readFrameSettings, readExportSettings, readProFrameOptions } from '../frame/settings';
 import { buildExportFileName } from '../export/filename';
 import { FORMAT_LABELS, isFormatAllowed, type ExportFormat } from '../export/formats';
 import { buildPdf, splitRgba } from '../export/pdf';
@@ -275,7 +275,7 @@ async function handleMessage(session: Session, message: PanelMessage): Promise<v
         background: message.background ?? '#1e1e1e',
       },
       message.fileName ?? '',
-      readFrameSettings(),
+      { ...readFrameSettings(), pro: await readProFrameOptions() },
     );
     session.svg = svg;
     const { scale, copyToClipboardAfterExport } = readExportSettings();

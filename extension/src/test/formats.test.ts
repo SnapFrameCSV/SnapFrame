@@ -1,6 +1,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FREE_BACKGROUNDS, FREE_FORMATS, FREE_SCALES, PRO_FORMATS, PRO_SCALES, allowedBackgroundType, allowedScale, isFormatAllowed } from '../export/formats';
+import {
+  FREE_BACKGROUNDS,
+  FREE_FORMATS,
+  FREE_SCALES,
+  PRO_FORMATS,
+  PRO_SCALES,
+  allowedBackgroundType,
+  allowedProFrameOptions,
+  allowedScale,
+  isFormatAllowed,
+} from '../export/formats';
+import { DEFAULT_PRO_FRAME_OPTIONS } from '../frame/svg';
+
+test('Pro frame extras (gradient angle/stops, background image, caption) collapse to the free defaults without a key', () => {
+  const requested = {
+    gradientAngle: 20,
+    gradientStops: ['#000', '#111', '#222'],
+    backgroundImage: 'data:image/png;base64,AAAA',
+    caption: { text: '@me', color: '#fff', position: 'right' as const },
+  };
+  assert.deepEqual(allowedProFrameOptions(requested, false, DEFAULT_PRO_FRAME_OPTIONS), DEFAULT_PRO_FRAME_OPTIONS);
+  assert.deepEqual(allowedProFrameOptions(requested, true, DEFAULT_PRO_FRAME_OPTIONS), requested);
+  assert.deepEqual(DEFAULT_PRO_FRAME_OPTIONS, { gradientAngle: 135, gradientStops: [] }, 'the free defaults are the diagonal two-stop gradient and nothing else');
+});
 
 // D05: the free tier must keep everything Slice 2 shipped. These assertions
 // are the contract — widening FREE_* is fine, shrinking it is not.

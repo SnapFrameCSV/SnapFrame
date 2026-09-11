@@ -31,10 +31,16 @@ test('presets round-trip through the JSON file format', () => {
 });
 
 test('every preset-able key is a real snapframe setting name', () => {
+  // background.image is deliberately absent: it is a machine-local path.
   const declared = [
     'background.type',
     'background.color',
     'background.gradient',
+    'background.gradientAngle',
+    'background.gradientStops',
+    'caption.text',
+    'caption.color',
+    'caption.position',
     'padding',
     'shadow',
     'cornerRadius',

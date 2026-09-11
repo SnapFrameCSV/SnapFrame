@@ -164,6 +164,47 @@
           ],
           "description": "Start and end colours of the gradient background. Used when background.type is \"gradient\"."
         },
+        "snapframe.background.gradientAngle": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360,
+          "default": 135,
+          "description": "Gradient direction in degrees (0 = upwards, 90 = to the right, 135 = the default diagonal). Pro."
+        },
+        "snapframe.background.gradientStops": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "default": [],
+          "description": "Two or more gradient colours, evenly spaced, overriding background.gradient. Leave empty to use background.gradient. Pro."
+        },
+        "snapframe.background.image": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to a .png/.jpg/.webp/.gif drawn behind the frame, scaled to cover the image (5 MB max). Pro."
+        },
+        "snapframe.caption.text": {
+          "type": "string",
+          "default": "",
+          "description": "A caption or handle (for example @yourname) drawn under the frame. Empty for none. Pro."
+        },
+        "snapframe.caption.color": {
+          "type": "string",
+          "default": "#ffffff",
+          "description": "Caption colour (your brand colour). Pro."
+        },
+        "snapframe.caption.position": {
+          "type": "string",
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "right",
+          "description": "Where the caption sits under the frame. Pro."
+        },
         "snapframe.padding": {
           "type": "number",
           "minimum": 0,

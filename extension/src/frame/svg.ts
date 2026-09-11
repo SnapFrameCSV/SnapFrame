@@ -22,7 +22,28 @@ export interface FrameSettings {
   windowControls: boolean;
   titleBar: boolean;
   lineNumbers: boolean;
+  /** Pro extras; the free tier always renders with `DEFAULT_PRO_FRAME_OPTIONS`. */
+  pro: ProFrameOptions;
 }
+
+export interface FrameCaption {
+  text: string;
+  /** CSS colour (the "brand colour"). */
+  color: string;
+  position: 'left' | 'center' | 'right';
+}
+
+export interface ProFrameOptions {
+  /** Gradient direction in CSS degrees (0 = to top, 90 = to right); 135 is the free tier's fixed diagonal. */
+  gradientAngle: number;
+  /** Two or more colours, evenly spaced; empty means "use backgroundGradient". */
+  gradientStops: string[];
+  /** A data: URI drawn over the backdrop, covering the whole image. */
+  backgroundImage?: string;
+  caption?: FrameCaption;
+}
+
+export const DEFAULT_PRO_FRAME_OPTIONS: ProFrameOptions = { gradientAngle: 135, gradientStops: [] };
 
 /** One stretch of text with a single style, as VS Code's highlighter emits it. */
 export interface TextRun {
@@ -72,6 +93,8 @@ const LINE_NUMBER_CHAR_WIDTH = 9;
 const LINE_NUMBER_GUTTER_PADDING = 20;
 const LINE_NUMBER_RIGHT_INSET = 12;
 const LINE_NUMBER_COLOR = 'rgba(255,255,255,0.35)';
+const CAPTION_BAND_HEIGHT = 28;
+const CAPTION_FONT_SIZE = 13;
 
 export function buildFrameSvg(content: FrameContent, fileName: string, settings: FrameSettings): string {
   const titleBarHeight = settings.titleBar ? TITLE_BAR_HEIGHT : 0;
@@ -83,8 +106,11 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
   const cardWidth = gutterWidth + textWidth + CODE_PADDING * 2;
   const cardHeight = textHeight + CODE_PADDING * 2 + titleBarHeight;
   const padding = Math.max(0, settings.padding);
+  const pro = settings.pro ?? DEFAULT_PRO_FRAME_OPTIONS;
+  const caption = pro.caption && pro.caption.text.trim() ? pro.caption : undefined;
+  const captionHeight = caption ? CAPTION_BAND_HEIGHT : 0;
   const totalWidth = cardWidth + padding * 2;
-  const totalHeight = cardHeight + padding * 2;
+  const totalHeight = cardHeight + padding * 2 + captionHeight;
   const radius = clamp(settings.cornerRadius, 0, Math.min(cardWidth, cardHeight) / 2);
   const textX = padding + gutterWidth + CODE_PADDING;
   const textTop = padding + titleBarHeight + CODE_PADDING;
@@ -94,13 +120,21 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
     : '';
 
   const backgroundFill = settings.backgroundType === 'gradient' ? 'url(#sf-bg-gradient)' : settings.backgroundColor;
+  const stops = pro.gradientStops.length >= 2 ? pro.gradientStops : settings.backgroundGradient;
+  const { x1, y1, x2, y2 } = gradientVector(pro.gradientAngle);
   const gradientDefs =
     settings.backgroundType === 'gradient'
-      ? `<linearGradient id="sf-bg-gradient" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="${escapeAttr(settings.backgroundGradient[0])}" />
-      <stop offset="100%" stop-color="${escapeAttr(settings.backgroundGradient[1])}" />
+      ? `<linearGradient id="sf-bg-gradient" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">
+      ${stops
+        .map((color, index) => `<stop offset="${Math.round((index / (stops.length - 1)) * 100)}%" stop-color="${escapeAttr(color)}" />`)
+        .join('\n      ')}
     </linearGradient>`
       : '';
+  const backgroundImageMarkup =
+    pro.backgroundImage && pro.backgroundImage.startsWith('data:image/')
+      ? `<image href="${escapeAttr(pro.backgroundImage)}" x="0" y="0" width="${totalWidth}" height="${totalHeight}" preserveAspectRatio="xMidYMid slice" />`
+      : '';
+  const captionMarkup = caption ? buildCaption(caption, padding, totalWidth, padding + cardHeight + padding / 2 + CAPTION_BAND_HEIGHT / 2) : '';
 
   const shadowFilter = settings.shadow
     ? `<filter id="sf-shadow" x="-30%" y="-30%" width="160%" height="160%">
@@ -122,6 +156,8 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${totalHeight}" viewBox="0 0 ${totalWidth} ${totalHeight}">
   <defs>${gradientDefs}${shadowFilter}</defs>
   ${backdrop}
+  ${backgroundImageMarkup}
+  ${captionMarkup}
   <g${settings.shadow ? ' filter="url(#sf-shadow)"' : ''}>
     <rect x="${padding}" y="${padding}" width="${cardWidth}" height="${cardHeight}" rx="${radius}" ry="${radius}" fill="${escapeAttr(content.background)}" />
   </g>
@@ -166,6 +202,28 @@ function buildCodeText(content: FrameContent, lineCount: number, rowHeight: numb
     );
   }
   return rows.join('\n    ');
+}
+
+/**
+ * Maps a CSS-style angle (0 = to top, 90 = to right) onto objectBoundingBox
+ * gradient coordinates, scaled so the line reaches the edge/corner — 135
+ * yields exactly the (0,0)→(1,1) diagonal the free tier has always drawn.
+ */
+export function gradientVector(angleDegrees: number): { x1: string; y1: string; x2: string; y2: string } {
+  const radians = (((angleDegrees % 360) + 360) % 360) * (Math.PI / 180);
+  let dx = Math.sin(radians);
+  let dy = -Math.cos(radians);
+  const scale = Math.max(Math.abs(dx), Math.abs(dy)) || 1;
+  dx /= scale;
+  dy /= scale;
+  const fmt = (v: number) => String(Math.round(v * 1000) / 1000 + 0);
+  return { x1: fmt(0.5 - dx / 2), y1: fmt(0.5 - dy / 2), x2: fmt(0.5 + dx / 2), y2: fmt(0.5 + dy / 2) };
+}
+
+function buildCaption(caption: FrameCaption, padding: number, totalWidth: number, y: number): string {
+  const x = caption.position === 'left' ? padding : caption.position === 'center' ? totalWidth / 2 : totalWidth - padding;
+  const anchor = caption.position === 'left' ? 'start' : caption.position === 'center' ? 'middle' : 'end';
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" dominant-baseline="central" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="${CAPTION_FONT_SIZE}" fill="${escapeAttr(caption.color)}" opacity="0.9">${escapeXml(caption.text.trim())}</text>`;
 }
 
 function buildLineNumbers(content: FrameContent, lineCount: number, rowHeight: number, textX: number, top: number): string {

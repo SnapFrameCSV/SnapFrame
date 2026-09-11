@@ -38,6 +38,18 @@ export function allowedBackgroundType(requested: string, pro: boolean): Backgrou
   return 'solid';
 }
 
+/** Pro-only frame extras as read from settings; without a key they collapse to the free defaults. */
+export function allowedProFrameOptions<T extends { gradientAngle: number; gradientStops: string[]; backgroundImage?: string; caption?: unknown }>(
+  requested: T,
+  pro: boolean,
+  freeDefaults: T,
+): T {
+  if (pro) {
+    return requested;
+  }
+  return { ...freeDefaults };
+}
+
 export const FORMAT_LABELS: Record<ExportFormat, string> = {
   png: 'PNG',
   svg: 'SVG',

@@ -197,7 +197,11 @@ const TEST_FRAME_SETTINGS: FrameSettings = {
   windowControls: true,
   titleBar: true,
   lineNumbers: true,
+  pro: { gradientAngle: 135, gradientStops: [] },
 };
+
+// A 1x1 opaque blue PNG.
+const BLUE_PIXEL_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNgYPj/HwADBwIAMCbHYQAAAABJRU5ErkJggg==';
 
 // What VS Code's "Copy With Syntax Highlighting" puts on the clipboard: a
 // wrapper carrying the editor's font/colours, one <div> per line, <br> for
@@ -395,6 +399,30 @@ test('webview shell: Pro WebP export encodes a WebP; PDF export hands the host t
     assert.equal(opaque, false);
     const pdf = buildPdf({ pageWidth: dims.width, pageHeight: dims.height, pixelWidth: pixels.width, pixelHeight: pixels.height, rgb, alpha });
     assert.equal(pdf.toString('latin1', 0, 8), '%PDF-1.4');
+
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('webview shell: a Pro background image (data URI) and caption still export without tainting the canvas', async () => {
+  const browser = await chromium.launch(launchOptions());
+  try {
+    const page = await loadShell(browser, false);
+    const measured = await render(page, null, 'brand();', 'b.ts', 1);
+    const svg = buildFrameSvg(toContent(measured, 1), 'b.ts', {
+      ...TEST_FRAME_SETTINGS,
+      pro: { gradientAngle: 135, gradientStops: [], backgroundImage: BLUE_PIXEL_PNG, caption: { text: '@snapframe', color: '#ffffff', position: 'right' } },
+    });
+    const dims = svgDims(svg);
+    await sendSvg(page, svg, 1, false, true);
+    await page.waitForFunction(() => document.getElementById('export-btn')?.style.display === 'inline-block');
+    await page.click('#export-btn');
+    const png = await exportedPng(page);
+    assert.deepEqual(pngSize(png), dims);
+    const [corner] = await samplePixels(page, png, [[2, 2]]);
+    assert.deepEqual(corner, [0, 0, 255, 255], 'the background image covers the red backdrop');
 
     await page.close();
   } finally {
