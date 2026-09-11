@@ -1,6 +1,6 @@
 # Gate 02b — Put the files on GitHub, and create the scheduled run with the repository attached
 
-- [x] **Cleared** (ticked by the first scheduled run that reads this file from the repository) — cleared 2026-09-11 by the first scheduled routine run: repo was reachable (`GET /repos/SnapFrameCSV/snapframe` → 200), files present, push succeeded.
+- [x] **Cleared** (ticked by the first scheduled run that reads this file from the repository) — cleared 2026-09-11: both operator steps worked. The scheduled run reaches the repository (`GET /repos/SnapFrameCSV/snapframe` → 200), reads it and pushes to it. **Correction from run 2:** the push lands on a per-session branch (`claude/keen-knuth-m1envd`), not on `main` — the run's environment does not allow pushing to `main`. Nothing a run has written has reached `main` yet. See `STATE.md` "Open questions" for the one decision needed.
 
 **Time:** about 8–10 minutes · **What you'll reply with:** "gate 02b done" plus the first line of the notification you receive
 
