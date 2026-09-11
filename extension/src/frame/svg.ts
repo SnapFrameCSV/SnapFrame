@@ -1,0 +1,115 @@
+/**
+ * Builds the frame SVG that is the source of truth for both the live preview
+ * and (a later sub-step) PNG export. Pure and vscode-free so it can be unit
+ * tested directly: given a measured content size and the frame settings, it
+ * returns a self-contained SVG string with the captured HTML embedded in a
+ * <foreignObject>.
+ */
+
+export interface FrameSettings {
+  backgroundType: 'solid' | 'gradient';
+  backgroundColor: string;
+  backgroundGradient: [string, string];
+  padding: number;
+  shadow: boolean;
+  cornerRadius: number;
+  windowControls: boolean;
+  titleBar: boolean;
+}
+
+export interface FrameContent {
+  /** Already-normalised HTML for the code block, sized to width x height. */
+  html: string;
+  /** Measured natural width of the code block in CSS pixels, before padding/chrome. */
+  width: number;
+  /** Measured natural height of the code block in CSS pixels, before padding/chrome. */
+  height: number;
+}
+
+const TITLE_BAR_HEIGHT = 36;
+const WINDOW_DOT_COLORS = ['#ff5f56', '#ffbd2e', '#27c93f'];
+const WINDOW_DOT_RADIUS = 6;
+const WINDOW_DOT_GAP = 20;
+const WINDOW_DOT_INSET = 20;
+const CARD_BACKGROUND = '#1e1e1e';
+
+export function buildFrameSvg(content: FrameContent, fileName: string, settings: FrameSettings): string {
+  const titleBarHeight = settings.titleBar ? TITLE_BAR_HEIGHT : 0;
+  const cardWidth = Math.max(1, content.width);
+  const cardHeight = Math.max(1, content.height) + titleBarHeight;
+  const padding = Math.max(0, settings.padding);
+  const totalWidth = cardWidth + padding * 2;
+  const totalHeight = cardHeight + padding * 2;
+  const radius = clamp(settings.cornerRadius, 0, Math.min(cardWidth, cardHeight) / 2);
+
+  const backgroundFill = settings.backgroundType === 'gradient' ? 'url(#sf-bg-gradient)' : settings.backgroundColor;
+  const gradientDefs =
+    settings.backgroundType === 'gradient'
+      ? `<linearGradient id="sf-bg-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="${escapeAttr(settings.backgroundGradient[0])}" />
+      <stop offset="100%" stop-color="${escapeAttr(settings.backgroundGradient[1])}" />
+    </linearGradient>`
+      : '';
+
+  const shadowFilter = settings.shadow
+    ? `<filter id="sf-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#000000" flood-opacity="0.35" />
+    </filter>`
+    : '';
+
+  const titleBarMarkup = settings.titleBar
+    ? `<rect x="${padding}" y="${padding}" width="${cardWidth}" height="${titleBarHeight}" fill="rgba(255,255,255,0.06)" />
+    ${settings.windowControls ? windowDots(padding, padding, titleBarHeight) : ''}
+    <text x="${padding + cardWidth / 2}" y="${padding + titleBarHeight / 2 + 4}" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" fill="rgba(255,255,255,0.65)">${escapeXml(fileName)}</text>`
+    : '';
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${totalHeight}" viewBox="0 0 ${totalWidth} ${totalHeight}">
+  <defs>${gradientDefs}${shadowFilter}</defs>
+  <rect x="0" y="0" width="${totalWidth}" height="${totalHeight}" fill="${escapeAttr(backgroundFill)}" />
+  <g${settings.shadow ? ' filter="url(#sf-shadow)"' : ''}>
+    <rect x="${padding}" y="${padding}" width="${cardWidth}" height="${cardHeight}" rx="${radius}" ry="${radius}" fill="${CARD_BACKGROUND}" />
+  </g>
+  <clipPath id="sf-card-clip">
+    <rect x="${padding}" y="${padding}" width="${cardWidth}" height="${cardHeight}" rx="${radius}" ry="${radius}" />
+  </clipPath>
+  <g clip-path="url(#sf-card-clip)">
+    ${titleBarMarkup}
+    <foreignObject x="${padding}" y="${padding + titleBarHeight}" width="${cardWidth}" height="${content.height}">
+      <div xmlns="http://www.w3.org/1999/xhtml">${content.html}</div>
+    </foreignObject>
+  </g>
+</svg>`;
+}
+
+function windowDots(originX: number, originY: number, barHeight: number): string {
+  const cy = originY + barHeight / 2;
+  return WINDOW_DOT_COLORS.map((color, index) => {
+    const cx = originX + WINDOW_DOT_INSET + index * WINDOW_DOT_GAP;
+    return `<circle cx="${cx}" cy="${cy}" r="${WINDOW_DOT_RADIUS}" fill="${color}" />`;
+  }).join('\n    ');
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function escapeXml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      default:
+        return '&#39;';
+    }
+  });
+}
+
+function escapeAttr(value: string): string {
+  return escapeXml(value);
+}
