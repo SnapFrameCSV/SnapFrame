@@ -5,6 +5,7 @@ import { buildFrameSvg, type TextRun } from '../frame/svg';
 import { readFrameSettings, readExportSettings } from '../frame/settings';
 import { buildExportFileName } from '../export/filename';
 import { FORMAT_LABELS, isFormatAllowed, type ExportFormat } from '../export/formats';
+import { buildPdf, splitRgba } from '../export/pdf';
 import { isPro } from '../licence/verify';
 import { renderShell } from '../webview/shell';
 
@@ -139,11 +140,17 @@ interface PanelMessage {
   background?: string;
   fileName?: string;
   lineCount?: number;
+  format?: string;
   bytes?: string;
+  rgba?: string;
+  cssWidth?: number;
+  cssHeight?: number;
   clipboardAttempted?: boolean;
   clipboardOk?: boolean;
   message?: string;
 }
+
+const RASTER_FORMATS: ReadonlySet<string> = new Set(['png', 'webp']);
 
 interface ClipboardOutcome {
   attempted: boolean;
@@ -283,9 +290,10 @@ async function handleMessage(session: Session, message: PanelMessage): Promise<v
     return;
   }
 
-  if (message.type === 'export-png') {
+  if (message.type === 'export-image') {
     const capture = session.capture;
-    if (!capture) {
+    const format = message.format ?? 'png';
+    if (!capture || !RASTER_FORMATS.has(format)) {
       return;
     }
     if (session.quick) {
@@ -293,13 +301,31 @@ async function handleMessage(session: Session, message: PanelMessage): Promise<v
       // for as short a time as possible; the bytes are already in hand.
       session.panel.dispose();
     }
-    await saveExport(capture, Buffer.from(message.bytes ?? '', 'base64'), 'png', {
+    await saveExport(capture, Buffer.from(message.bytes ?? '', 'base64'), format as ExportFormat, {
       attempted: message.clipboardAttempted ?? false,
       ok: message.clipboardOk ?? false,
     });
     if (session.quick) {
       await returnToEditor(session);
     }
+    return;
+  }
+
+  if (message.type === 'export-pixels') {
+    const capture = session.capture;
+    if (!capture || !message.rgba || !message.width || !message.height) {
+      return;
+    }
+    const { rgb, alpha, opaque } = splitRgba(Buffer.from(message.rgba, 'base64'));
+    const pdf = buildPdf({
+      pageWidth: message.cssWidth ?? message.width,
+      pageHeight: message.cssHeight ?? message.height,
+      pixelWidth: message.width,
+      pixelHeight: message.height,
+      rgb,
+      alpha: opaque ? undefined : alpha,
+    });
+    await saveExport(capture, pdf, 'pdf', { attempted: false, ok: false });
     return;
   }
 

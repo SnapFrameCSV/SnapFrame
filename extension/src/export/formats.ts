@@ -25,6 +25,19 @@ export function allowedScale(requested: number, pro: boolean): ExportScale {
   return 2;
 }
 
+export type BackgroundType = 'solid' | 'gradient' | 'transparent';
+export const FREE_BACKGROUNDS: readonly BackgroundType[] = ['solid', 'gradient'];
+export const PRO_BACKGROUNDS: readonly BackgroundType[] = ['transparent'];
+
+/** The background type that will actually be used: Pro-only types fall back to solid. */
+export function allowedBackgroundType(requested: string, pro: boolean): BackgroundType {
+  const type = ([...FREE_BACKGROUNDS, ...PRO_BACKGROUNDS] as string[]).includes(requested) ? (requested as BackgroundType) : 'solid';
+  if (FREE_BACKGROUNDS.includes(type) || (pro && PRO_BACKGROUNDS.includes(type))) {
+    return type;
+  }
+  return 'solid';
+}
+
 export const FORMAT_LABELS: Record<ExportFormat, string> = {
   png: 'PNG',
   svg: 'SVG',

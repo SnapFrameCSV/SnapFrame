@@ -1,11 +1,19 @@
 import * as vscode from 'vscode';
 import { FrameSettings } from './svg';
+import { allowedBackgroundType, allowedScale, type ExportScale } from '../export/formats';
+import { isPro } from '../licence/verify';
 
-/** Reads the frame-styling settings declared in package.json. Not pure (reads vscode config), so left untested like source.ts. */
+/**
+ * Reads the frame-styling settings declared in package.json, applying the
+ * Pro gates (a Pro-only value chosen without a licence falls back to its free
+ * equivalent — the setting itself is left untouched). Not pure (reads vscode
+ * config), so left untested like source.ts; the gates are tested in
+ * formats.test.ts.
+ */
 export function readFrameSettings(): FrameSettings {
   const config = vscode.workspace.getConfiguration('snapframe');
   return {
-    backgroundType: config.get<'solid' | 'gradient'>('background.type', 'gradient'),
+    backgroundType: allowedBackgroundType(config.get<string>('background.type', 'gradient'), isPro()),
     backgroundColor: config.get<string>('background.color', '#1e1e2e'),
     backgroundGradient: config.get<[string, string]>('background.gradient', ['#8caaee', '#ca9ee6']),
     padding: config.get<number>('padding', 32),
@@ -18,16 +26,16 @@ export function readFrameSettings(): FrameSettings {
 }
 
 export interface ExportSettings {
-  scale: 1 | 2;
+  scale: ExportScale;
   exportFolder: string;
   copyToClipboardAfterExport: boolean;
 }
 
-/** Reads the PNG-export settings. Not pure (reads vscode config), so left untested like readFrameSettings. */
+/** Reads the export settings with the Pro scale gate applied. Not pure (reads vscode config), so left untested like readFrameSettings. */
 export function readExportSettings(): ExportSettings {
   const config = vscode.workspace.getConfiguration('snapframe');
   return {
-    scale: config.get<1 | 2>('scale', 2),
+    scale: allowedScale(config.get<number>('scale', 2), isPro()),
     exportFolder: config.get<string>('exportFolder', ''),
     copyToClipboardAfterExport: config.get<boolean>('copyToClipboardAfterExport', false),
   };

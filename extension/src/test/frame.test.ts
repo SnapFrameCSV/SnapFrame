@@ -53,6 +53,13 @@ test('buildFrameSvg uses a solid fill and no gradient defs when backgroundType i
   assert.match(svg, /fill="#ff0000"/);
 });
 
+test('buildFrameSvg draws no backdrop at all when the background is transparent', () => {
+  const svg = buildFrameSvg(content, 'index.ts', { ...baseSettings, backgroundType: 'transparent' });
+  assert.doesNotMatch(svg, /<rect x="0" y="0"/);
+  assert.doesNotMatch(svg, /linearGradient/);
+  assert.match(svg, /rx="12" ry="12" fill="#1e1e1e"/, 'the card itself is still drawn');
+});
+
 test('buildFrameSvg emits gradient stops matching the configured colours', () => {
   const svg = buildFrameSvg(content, 'index.ts', baseSettings);
   assert.match(svg, /stop-color="#8caaee"/);

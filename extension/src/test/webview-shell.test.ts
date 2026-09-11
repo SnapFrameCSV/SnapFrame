@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { renderShell } from '../webview/shell';
 import { buildFrameSvg, type FrameContent, type FrameSettings, type TextRun } from '../frame/svg';
+import { buildPdf, splitRgba } from '../export/pdf';
 
 /**
  * Golden-image suite (BUILD.md Slice 2 sub-step 4): loads the real webview
@@ -126,17 +127,32 @@ function buttonDisplay(page: Page, id: string): Promise<string | undefined> {
   return page.evaluate((buttonId) => document.getElementById(buttonId)?.style.display, id);
 }
 
-async function exportedPng(page: Page): Promise<Buffer> {
-  await waitForMessageType(page, 'export-png', 'export-failed');
-  const exported = (await messages(page)).find((m) => m.type === 'export-png' || m.type === 'export-failed') as {
+async function exportedImage(page: Page, format: 'png' | 'webp'): Promise<Buffer> {
+  await waitForMessageType(page, 'export-image', 'export-failed');
+  const exported = (await messages(page)).find((m) => m.type === 'export-image' || m.type === 'export-failed') as {
     type: string;
+    format?: string;
     bytes?: string;
     message?: string;
   };
-  assert.equal(exported.type, 'export-png', exported.message ? `export failed: ${exported.message}` : undefined);
+  assert.equal(exported.type, 'export-image', exported.message ? `export failed: ${exported.message}` : undefined);
+  assert.equal(exported.format, format);
   const bytes = Buffer.from(exported.bytes ?? '', 'base64');
-  assert.deepEqual([...bytes.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 'starts with the PNG magic number');
+  if (format === 'png') {
+    assert.deepEqual([...bytes.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 'starts with the PNG magic number');
+  } else {
+    assert.equal(bytes.toString('latin1', 0, 4), 'RIFF');
+    assert.equal(bytes.toString('latin1', 8, 12), 'WEBP');
+  }
   return bytes;
+}
+
+const exportedPng = (page: Page): Promise<Buffer> => exportedImage(page, 'png');
+
+async function clearMessages(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (window as unknown as { __messages: unknown[] }).__messages.length = 0;
+  });
 }
 
 function pngSize(bytes: Buffer): { width: number; height: number } {
@@ -283,9 +299,7 @@ test('webview shell: full pipeline exports a PNG of the frame at 1x and 2x', asy
     );
 
     // 2x: same frame, double the pixels.
-    await page.evaluate(() => {
-      (window as unknown as { __messages: unknown[] }).__messages.length = 0;
-    });
+    await clearMessages(page);
     await sendSvg(page, svg, 2, false);
     await page.click('#export-btn');
     const png2x = await exportedPng(page);
@@ -316,7 +330,7 @@ test('webview shell: quick snap auto-exports on the svg message without ever sho
   }
 });
 
-test('webview shell: the Export SVG button appears only for Pro and asks the host to save', async () => {
+test('webview shell: Pro export buttons appear only for Pro; SVG asks the host to save', async () => {
   const browser = await chromium.launch(launchOptions());
   try {
     const page = await loadShell(browser, false);
@@ -325,14 +339,62 @@ test('webview shell: the Export SVG button appears only for Pro and asks the hos
 
     await sendSvg(page, svg, 1, false, false);
     await page.waitForFunction(() => document.getElementById('export-btn')?.style.display === 'inline-block');
-    assert.equal(await buttonDisplay(page, 'export-svg-btn'), 'none', 'free tier: PNG only, no SVG button');
+    for (const id of ['export-svg-btn', 'export-webp-btn', 'export-pdf-btn']) {
+      assert.equal(await buttonDisplay(page, id), 'none', `free tier: PNG only, no ${id}`);
+    }
 
     await sendSvg(page, svg, 1, false, true);
-    await page.waitForFunction(() => document.getElementById('export-svg-btn')?.style.display === 'inline-block');
-    assert.equal(await buttonDisplay(page, 'export-btn'), 'inline-block', 'Pro keeps the free PNG button too');
+    await page.waitForFunction(() => document.getElementById('export-pdf-btn')?.style.display === 'inline-block');
+    for (const id of ['export-btn', 'export-svg-btn', 'export-webp-btn', 'export-pdf-btn']) {
+      assert.equal(await buttonDisplay(page, id), 'inline-block', `Pro shows ${id}`);
+    }
 
     await page.click('#export-svg-btn');
     await waitForMessageType(page, 'export-svg');
+
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('webview shell: Pro WebP export encodes a WebP; PDF export hands the host the raw pixels', async () => {
+  const browser = await chromium.launch(launchOptions());
+  try {
+    const page = await loadShell(browser, false);
+    const measured = await render(page, null, 'pro();', 'p.ts', 1);
+    const svg = buildFrameSvg(toContent(measured, 1), 'p.ts', { ...TEST_FRAME_SETTINGS, backgroundType: 'transparent' });
+    const dims = svgDims(svg);
+
+    await sendSvg(page, svg, 2, false, true);
+    await page.waitForFunction(() => document.getElementById('export-webp-btn')?.style.display === 'inline-block');
+    await page.click('#export-webp-btn');
+    await exportedImage(page, 'webp');
+
+    await clearMessages(page);
+    await page.click('#export-pdf-btn');
+    await waitForMessageType(page, 'export-pixels', 'export-failed');
+    const pixels = (await messages(page)).find((m) => m.type === 'export-pixels') as unknown as {
+      width: number;
+      height: number;
+      cssWidth: number;
+      cssHeight: number;
+      rgba: string;
+    };
+    assert.ok(pixels, 'pixels were posted');
+    assert.deepEqual({ width: pixels.width, height: pixels.height }, { width: dims.width * 2, height: dims.height * 2 });
+    assert.deepEqual({ width: pixels.cssWidth, height: pixels.cssHeight }, dims);
+    const rgba = Buffer.from(pixels.rgba, 'base64');
+    assert.equal(rgba.length, pixels.width * pixels.height * 4);
+    // Transparent background: the corner pixel has zero alpha, the card is opaque.
+    assert.equal(rgba[3], 0, 'corner is transparent');
+    const cardIndex = ((16 + 36 + 8) * 2 * pixels.width + (16 + 8) * 2) * 4;
+    assert.equal(rgba[cardIndex + 3], 255, 'card is opaque');
+    // And the host-side writer accepts exactly this shape.
+    const { rgb, alpha, opaque } = splitRgba(rgba);
+    assert.equal(opaque, false);
+    const pdf = buildPdf({ pageWidth: dims.width, pageHeight: dims.height, pixelWidth: pixels.width, pixelHeight: pixels.height, rgb, alpha });
+    assert.equal(pdf.toString('latin1', 0, 8), '%PDF-1.4');
 
     await page.close();
   } finally {

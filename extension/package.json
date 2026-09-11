@@ -110,10 +110,16 @@
           "type": "string",
           "enum": [
             "solid",
-            "gradient"
+            "gradient",
+            "transparent"
+          ],
+          "enumDescriptions": [
+            "A single colour (background.color).",
+            "A two-colour gradient (background.gradient).",
+            "No backdrop — the image keeps a transparent background. Pro."
           ],
           "default": "gradient",
-          "description": "Fill behind the code frame: a single colour or a two-colour gradient."
+          "description": "Fill behind the code frame: a single colour, a two-colour gradient, or (Pro) nothing."
         },
         "snapframe.background.color": {
           "type": "string",
@@ -178,10 +184,12 @@
           "type": "number",
           "enum": [
             1,
-            2
+            2,
+            3,
+            4
           ],
           "default": 2,
-          "description": "Export resolution multiplier. 2× is sharper on high-DPI screens."
+          "description": "Export resolution multiplier. 2× is sharper on high-DPI screens. 3× and 4× are Pro (they fall back to 2× without a key)."
         },
         "snapframe.exportFolder": {
           "type": "string",

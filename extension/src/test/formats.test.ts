@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FREE_FORMATS, FREE_SCALES, PRO_FORMATS, PRO_SCALES, allowedScale, isFormatAllowed } from '../export/formats';
+import { FREE_BACKGROUNDS, FREE_FORMATS, FREE_SCALES, PRO_FORMATS, PRO_SCALES, allowedBackgroundType, allowedScale, isFormatAllowed } from '../export/formats';
 
 // D05: the free tier must keep everything Slice 2 shipped. These assertions
 // are the contract — widening FREE_* is fine, shrinking it is not.
@@ -33,6 +33,15 @@ test('Pro scales fall back to 2x without a licence and are honoured with one', (
     assert.equal(allowedScale(scale, false), 2);
     assert.equal(allowedScale(scale, true), scale);
   }
+});
+
+test('the free tier keeps solid and gradient backgrounds; transparent is Pro', () => {
+  assert.deepEqual([...FREE_BACKGROUNDS], ['solid', 'gradient']);
+  assert.equal(allowedBackgroundType('gradient', false), 'gradient');
+  assert.equal(allowedBackgroundType('solid', false), 'solid');
+  assert.equal(allowedBackgroundType('transparent', false), 'solid');
+  assert.equal(allowedBackgroundType('transparent', true), 'transparent');
+  assert.equal(allowedBackgroundType('plaid', true), 'solid');
 });
 
 test('an unknown scale value falls back to 2x either way', () => {

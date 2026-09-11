@@ -58,7 +58,7 @@ export function renderShell(cspSource: string, quick: boolean): string {
 </head>
 <body>
   <div id="status">${quick ? 'Snapframe — quick snap…' : 'Snapframe — capturing…'}</div>
-  <div id="toolbar"${quick ? ' hidden' : ''}><button id="export-btn">Export PNG</button><button id="export-svg-btn">Export SVG</button></div>
+  <div id="toolbar"${quick ? ' hidden' : ''}><button id="export-btn">Export PNG</button><button id="export-svg-btn" data-pro>Export SVG</button><button id="export-webp-btn" data-pro>Export WebP</button><button id="export-pdf-btn" data-pro>Export PDF</button></div>
   <div id="paste-target" contenteditable="true"></div>
   <div id="measure"></div>
   <div id="preview"></div>
@@ -71,6 +71,9 @@ export function renderShell(cspSource: string, quick: boolean): string {
     const status = document.getElementById('status');
     const exportBtn = document.getElementById('export-btn');
     const exportSvgBtn = document.getElementById('export-svg-btn');
+    const exportWebpBtn = document.getElementById('export-webp-btn');
+    const exportPdfBtn = document.getElementById('export-pdf-btn');
+    const proButtons = Array.from(document.querySelectorAll('#toolbar button[data-pro]'));
 
     let lastFileName = '';
     let lastSvgText = null;
@@ -105,10 +108,12 @@ export function renderShell(cspSource: string, quick: boolean): string {
         const dims = message.svg.match(/<svg[^>]*\\swidth="(\\d+)"[^>]*\\sheight="(\\d+)"/);
         lastDims = dims ? { width: Number(dims[1]), height: Number(dims[2]) } : null;
         exportBtn.style.display = lastDims && !quick ? 'inline-block' : 'none';
-        exportSvgBtn.style.display = lastDims && !quick && lastPro ? 'inline-block' : 'none';
+        for (const button of proButtons) {
+          button.style.display = lastDims && !quick && lastPro ? 'inline-block' : 'none';
+        }
         if (message.autoExport) {
           if (lastDims) {
-            void exportPng();
+            void exportRaster('png');
           } else {
             vscode.postMessage({ type: 'export-failed', message: 'frame has no measurable size' });
           }
@@ -116,15 +121,20 @@ export function renderShell(cspSource: string, quick: boolean): string {
       }
     });
 
-    exportBtn.addEventListener('click', () => { void exportPng(); });
+    exportBtn.addEventListener('click', () => { void exportRaster('png'); });
+    exportWebpBtn.addEventListener('click', () => { void exportRaster('webp'); });
+    exportPdfBtn.addEventListener('click', () => { void exportRaster('pdf'); });
     // The host already holds the SVG it built; it only needs to be told to save it.
     exportSvgBtn.addEventListener('click', () => { vscode.postMessage({ type: 'export-svg' }); });
 
-    async function exportPng() {
+    // Rasterises the frame SVG at lastScale. PNG and WebP are encoded here by
+    // the canvas; for PDF the raw pixels go to the host, which has zlib and
+    // writes the file itself (see export/pdf.ts).
+    async function exportRaster(format) {
       if (!lastSvgText || !lastDims) {
         return;
       }
-      exportBtn.disabled = true;
+      setButtonsDisabled(true);
       const previousStatus = status.textContent;
       status.textContent = 'Snapframe — exporting…';
       let objectUrl;
@@ -145,14 +155,33 @@ export function renderShell(cspSource: string, quick: boolean): string {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        if (format === 'pdf') {
+          const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+          vscode.postMessage({
+            type: 'export-pixels',
+            format: 'pdf',
+            width: canvas.width,
+            height: canvas.height,
+            cssWidth: lastDims.width,
+            cssHeight: lastDims.height,
+            rgba: toBase64(pixels),
+          });
+          status.textContent = previousStatus;
+          return;
+        }
+
+        const mime = format === 'webp' ? 'image/webp' : 'image/png';
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, mime, 0.95));
         if (!blob) {
           throw new Error('canvas produced no image data');
+        }
+        if (blob.type !== mime) {
+          throw new Error(format.toUpperCase() + ' encoding is not supported here');
         }
 
         let clipboardAttempted = false;
         let clipboardOk = false;
-        if (lastCopyToClipboard) {
+        if (lastCopyToClipboard && format === 'png') {
           clipboardAttempted = true;
           try {
             if (navigator.clipboard && window.ClipboardItem) {
@@ -164,14 +193,8 @@ export function renderShell(cspSource: string, quick: boolean): string {
           }
         }
 
-        const buffer = await blob.arrayBuffer();
-        const byteArray = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < byteArray.length; i++) {
-          binary += String.fromCharCode(byteArray[i]);
-        }
-        const base64 = btoa(binary);
-        vscode.postMessage({ type: 'export-png', bytes: base64, clipboardAttempted, clipboardOk });
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        vscode.postMessage({ type: 'export-image', format, bytes: toBase64(bytes), clipboardAttempted, clipboardOk });
         status.textContent = previousStatus;
       } catch (err) {
         const reason = err && err.message ? err.message : String(err);
@@ -181,15 +204,32 @@ export function renderShell(cspSource: string, quick: boolean): string {
         if (objectUrl) {
           URL.revokeObjectURL(objectUrl);
         }
-        exportBtn.disabled = false;
+        setButtonsDisabled(false);
       }
+    }
+
+    function setButtonsDisabled(disabled) {
+      for (const button of document.querySelectorAll('#toolbar button')) {
+        button.disabled = disabled;
+      }
+    }
+
+    function toBase64(byteArray) {
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < byteArray.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, byteArray.subarray(i, i + chunk));
+      }
+      return btoa(binary);
     }
 
     function renderCapture(html, fallbackText, fileName, rawLineCount) {
       status.textContent = 'Snapframe — ' + fileName;
       lastFileName = fileName;
       exportBtn.style.display = 'none';
-      exportSvgBtn.style.display = 'none';
+      for (const button of proButtons) {
+        button.style.display = 'none';
+      }
       measure.innerHTML = '';
       if (html) {
         measure.innerHTML = html;

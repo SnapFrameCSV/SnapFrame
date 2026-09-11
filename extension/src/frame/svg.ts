@@ -12,7 +12,8 @@
  */
 
 export interface FrameSettings {
-  backgroundType: 'solid' | 'gradient';
+  /** `transparent` (Pro) draws no backdrop at all, so PNG/WebP/PDF keep alpha. */
+  backgroundType: 'solid' | 'gradient' | 'transparent';
   backgroundColor: string;
   backgroundGradient: [string, string];
   padding: number;
@@ -113,9 +114,14 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
     <text x="${padding + cardWidth / 2}" y="${padding + titleBarHeight / 2 + 4}" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" fill="rgba(255,255,255,0.65)">${escapeXml(fileName)}</text>`
     : '';
 
+  const backdrop =
+    settings.backgroundType === 'transparent'
+      ? ''
+      : `<rect x="0" y="0" width="${totalWidth}" height="${totalHeight}" fill="${escapeAttr(backgroundFill)}" />`;
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${totalHeight}" viewBox="0 0 ${totalWidth} ${totalHeight}">
   <defs>${gradientDefs}${shadowFilter}</defs>
-  <rect x="0" y="0" width="${totalWidth}" height="${totalHeight}" fill="${escapeAttr(backgroundFill)}" />
+  ${backdrop}
   <g${settings.shadow ? ' filter="url(#sf-shadow)"' : ''}>
     <rect x="${padding}" y="${padding}" width="${cardWidth}" height="${cardHeight}" rx="${radius}" ry="${radius}" fill="${escapeAttr(content.background)}" />
   </g>
