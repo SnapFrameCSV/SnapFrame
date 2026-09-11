@@ -80,6 +80,16 @@
         "category": "Snapframe"
       },
       {
+        "command": "snapframe.captureBefore",
+        "title": "Capture as 'Before' (Pro)",
+        "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.captureAfter",
+        "title": "Capture as 'After' and Compare (Pro)",
+        "category": "Snapframe"
+      },
+      {
         "command": "snapframe.savePreset",
         "title": "Save Preset… (Pro)",
         "category": "Snapframe"
@@ -204,6 +214,28 @@
           ],
           "default": "right",
           "description": "Where the caption sits under the frame. Pro."
+        },
+        "snapframe.layout.comparison": {
+          "type": "string",
+          "enum": [
+            "side-by-side",
+            "stacked"
+          ],
+          "default": "side-by-side",
+          "description": "How the two cards of a before/after comparison are arranged. Pro."
+        },
+        "snapframe.layout.labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "default": [
+            "Before",
+            "After"
+          ],
+          "description": "Labels shown above the two cards of a comparison. Pro."
         },
         "snapframe.qr.text": {
           "type": "string",

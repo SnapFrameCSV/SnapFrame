@@ -48,6 +48,20 @@ export async function readProFrameOptions(): Promise<ProFrameOptions> {
   return allowedProFrameOptions(requested, pro, DEFAULT_PRO_FRAME_OPTIONS);
 }
 
+export interface LayoutSettings {
+  comparison: 'side-by-side' | 'stacked';
+  labels: [string, string];
+}
+
+/** Layout for the Pro before/after comparison. */
+export function readLayoutSettings(): LayoutSettings {
+  const config = vscode.workspace.getConfiguration('snapframe');
+  const comparison = config.get<string>('layout.comparison', 'side-by-side');
+  const labels = config.get<unknown>('layout.labels', ['Before', 'After']);
+  const [before, after] = Array.isArray(labels) && labels.length === 2 && labels.every((l) => typeof l === 'string') ? (labels as [string, string]) : ['Before', 'After'];
+  return { comparison: comparison === 'stacked' ? 'stacked' : 'side-by-side', labels: [before, after] };
+}
+
 let warnedQrText: string | undefined;
 
 /** Validates the QR text once up front so an unencodable value warns instead of silently drawing nothing. */

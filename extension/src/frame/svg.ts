@@ -130,32 +130,72 @@ const QR_QUIET_MODULES = 2;
 export const QR_MIN_SIZE = 48;
 export const QR_MAX_SIZE = 240;
 
+export interface FramePanel {
+  content: FrameContent;
+  fileName: string;
+  /** Shown above the card (e.g. "Before"); omitted when empty. */
+  label?: string;
+}
+
+export type FrameLayout = 'side-by-side' | 'stacked';
+
+const PANEL_GAP = 24;
+const LABEL_BAND_HEIGHT = 24;
+const LABEL_FONT_SIZE = 13;
+
 export function buildFrameSvg(content: FrameContent, fileName: string, settings: FrameSettings): string {
-  const titleBarHeight = settings.titleBar ? TITLE_BAR_HEIGHT : 0;
-  const lineCount = Math.max(1, content.lineCount);
-  const lastLine = content.startLine + lineCount - 1;
-  const gutterWidth = settings.lineNumbers ? String(lastLine).length * LINE_NUMBER_CHAR_WIDTH + LINE_NUMBER_GUTTER_PADDING : 0;
-  const textWidth = Math.max(1, content.width);
-  const textHeight = Math.max(1, content.height);
-  const cardWidth = gutterWidth + textWidth + CODE_PADDING * 2;
-  const cardHeight = textHeight + CODE_PADDING * 2 + titleBarHeight;
+  return buildMultiFrameSvg([{ content, fileName }], settings, 'side-by-side');
+}
+
+/**
+ * One or more cards on a shared backdrop — a single capture, or two (or
+ * more) laid out side by side / stacked for before/after comparisons. Each
+ * card is built by `buildCard` at its own origin; everything around the
+ * cards (backdrop, gradient, background image, caption/QR band) is shared.
+ */
+export function buildMultiFrameSvg(panels: FramePanel[], settings: FrameSettings, layout: FrameLayout): string {
+  if (panels.length === 0) {
+    throw new Error('at least one panel is required');
+  }
   const padding = Math.max(0, settings.padding);
   const pro = settings.pro ?? DEFAULT_PRO_FRAME_OPTIONS;
   const qr = pro.qr && pro.qr.text.trim() ? encodeQrOrNull(pro.qr.text.trim()) : null;
   const qrSize = qr ? clamp(pro.qr?.size ?? 80, QR_MIN_SIZE, QR_MAX_SIZE) : 0;
   const caption = pro.caption && pro.caption.text.trim() ? pro.caption : undefined;
-  // The band under the card holds the caption and/or the QR code.
+  const hasLabels = panels.some((p) => p.label && p.label.trim());
+  const labelBand = hasLabels ? LABEL_BAND_HEIGHT : 0;
+
+  // Lay the cards out first so the canvas can be sized around them.
+  const sizes = panels.map((p) => measureCard(p.content, settings));
+  const cards: string[] = [];
+  let cursorX = padding;
+  let cursorY = padding + labelBand;
+  let cardsWidth = 0;
+  let cardsHeight = 0;
+  panels.forEach((panel, index) => {
+    const { width, height } = sizes[index];
+    const labelMarkup =
+      panel.label && panel.label.trim()
+        ? `<text x="${cursorX}" y="${cursorY - LABEL_BAND_HEIGHT / 2}" dominant-baseline="central" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="${LABEL_FONT_SIZE}" font-weight="600" fill="#ffffff" opacity="0.85">${escapeXml(panel.label.trim())}</text>`
+        : '';
+    cards.push(labelMarkup + buildCard(panel.content, panel.fileName, settings, pro, cursorX, cursorY, panels.length === 1 ? '' : `-${index}`));
+    if (layout === 'side-by-side') {
+      cardsWidth += width + (index > 0 ? PANEL_GAP : 0);
+      cardsHeight = Math.max(cardsHeight, height);
+      cursorX += width + PANEL_GAP;
+    } else {
+      cardsHeight += height + (index > 0 ? PANEL_GAP : 0);
+      cardsWidth = Math.max(cardsWidth, width);
+      cursorY += height + PANEL_GAP + labelBand;
+    }
+  });
+  const stackedLabelBands = layout === 'stacked' ? labelBand * panels.length : labelBand;
+
+  // The band under the cards holds the caption and/or the QR code.
   const bandHeight = Math.max(caption ? CAPTION_BAND_HEIGHT : 0, qr ? qrSize + QR_BAND_PADDING * 2 : 0);
-  const totalWidth = cardWidth + padding * 2;
-  const totalHeight = cardHeight + padding * 2 + bandHeight;
-  const bandTop = padding + cardHeight + padding / 2;
-  const radius = clamp(settings.cornerRadius, 0, Math.min(cardWidth, cardHeight) / 2);
-  const textX = padding + gutterWidth + CODE_PADDING;
-  const textTop = padding + titleBarHeight + CODE_PADDING;
-  const rowHeight = textHeight / lineCount;
-  const lineNumbersMarkup = settings.lineNumbers
-    ? buildLineNumbers(content, lineCount, rowHeight, padding + gutterWidth - LINE_NUMBER_RIGHT_INSET, textTop)
-    : '';
+  const totalWidth = cardsWidth + padding * 2;
+  const totalHeight = cardsHeight + stackedLabelBands + padding * 2 + bandHeight;
+  const bandTop = padding + stackedLabelBands + cardsHeight + padding / 2;
 
   const backgroundFill = settings.backgroundType === 'gradient' ? 'url(#sf-bg-gradient)' : settings.backgroundColor;
   const stops = pro.gradientStops.length >= 2 ? pro.gradientStops : settings.backgroundGradient;
@@ -184,12 +224,6 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
     </filter>`
     : '';
 
-  const titleBarMarkup = settings.titleBar
-    ? `<rect x="${padding}" y="${padding}" width="${cardWidth}" height="${titleBarHeight}" fill="rgba(255,255,255,0.06)" />
-    ${settings.windowControls ? windowDots(padding, padding, titleBarHeight) : ''}
-    <text x="${padding + cardWidth / 2}" y="${padding + titleBarHeight / 2 + 4}" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" fill="rgba(255,255,255,0.65)">${escapeXml(fileName)}</text>`
-    : '';
-
   const backdrop =
     settings.backgroundType === 'transparent'
       ? ''
@@ -201,20 +235,66 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
   ${backgroundImageMarkup}
   ${captionMarkup}
   ${qrMarkup}
-  <g${settings.shadow ? ' filter="url(#sf-shadow)"' : ''}>
-    <rect x="${padding}" y="${padding}" width="${cardWidth}" height="${cardHeight}" rx="${radius}" ry="${radius}" fill="${escapeAttr(content.background)}" />
+  ${cards.join('\n  ')}
+</svg>`;
+}
+
+interface CardGeometry {
+  titleBarHeight: number;
+  lineCount: number;
+  gutterWidth: number;
+  textWidth: number;
+  textHeight: number;
+  width: number;
+  height: number;
+}
+
+function measureCard(content: FrameContent, settings: FrameSettings): CardGeometry {
+  const titleBarHeight = settings.titleBar ? TITLE_BAR_HEIGHT : 0;
+  const lineCount = Math.max(1, content.lineCount);
+  const lastLine = content.startLine + lineCount - 1;
+  const gutterWidth = settings.lineNumbers ? String(lastLine).length * LINE_NUMBER_CHAR_WIDTH + LINE_NUMBER_GUTTER_PADDING : 0;
+  const textWidth = Math.max(1, content.width);
+  const textHeight = Math.max(1, content.height);
+  return {
+    titleBarHeight,
+    lineCount,
+    gutterWidth,
+    textWidth,
+    textHeight,
+    width: gutterWidth + textWidth + CODE_PADDING * 2,
+    height: textHeight + CODE_PADDING * 2 + titleBarHeight,
+  };
+}
+
+/** One card (shadow, rounded clip, title bar, highlights, gutter, text, callouts) with its top-left at (x, y). */
+function buildCard(content: FrameContent, fileName: string, settings: FrameSettings, pro: ProFrameOptions, x: number, y: number, idSuffix: string): string {
+  const { titleBarHeight, lineCount, gutterWidth, textWidth, textHeight, width: cardWidth, height: cardHeight } = measureCard(content, settings);
+  const radius = clamp(settings.cornerRadius, 0, Math.min(cardWidth, cardHeight) / 2);
+  const textX = x + gutterWidth + CODE_PADDING;
+  const textTop = y + titleBarHeight + CODE_PADDING;
+  const rowHeight = textHeight / lineCount;
+  const lineNumbersMarkup = settings.lineNumbers ? buildLineNumbers(content, lineCount, rowHeight, x + gutterWidth - LINE_NUMBER_RIGHT_INSET, textTop) : '';
+  const titleBarMarkup = settings.titleBar
+    ? `<rect x="${x}" y="${y}" width="${cardWidth}" height="${titleBarHeight}" fill="rgba(255,255,255,0.06)" />
+    ${settings.windowControls ? windowDots(x, y, titleBarHeight) : ''}
+    <text x="${x + cardWidth / 2}" y="${y + titleBarHeight / 2 + 4}" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" fill="rgba(255,255,255,0.65)">${escapeXml(fileName)}</text>`
+    : '';
+  const clipId = `sf-card-clip${idSuffix}`;
+
+  return `<g${settings.shadow ? ' filter="url(#sf-shadow)"' : ''}>
+    <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="${radius}" ry="${radius}" fill="${escapeAttr(content.background)}" />
   </g>
-  <clipPath id="sf-card-clip">
-    <rect x="${padding}" y="${padding}" width="${cardWidth}" height="${cardHeight}" rx="${radius}" ry="${radius}" />
+  <clipPath id="${clipId}">
+    <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="${radius}" ry="${radius}" />
   </clipPath>
-  <g clip-path="url(#sf-card-clip)">
+  <g clip-path="url(#${clipId})">
     ${titleBarMarkup}
-    ${buildHighlights(content, lineCount, rowHeight, pro, padding, textTop, cardWidth)}
+    ${buildHighlights(content, lineCount, rowHeight, pro, x, textTop, cardWidth)}
     ${lineNumbersMarkup}
     ${buildCodeText(content, lineCount, rowHeight, textX, textTop, dimmedRows(content, lineCount, pro))}
     ${buildCallouts(content, lineCount, rowHeight, pro, textX + textWidth, textTop)}
-  </g>
-</svg>`;
+  </g>`;
 }
 
 /** Rows to fade: every row without a highlight, but only when focus-dim is on and there is at least one highlight. */

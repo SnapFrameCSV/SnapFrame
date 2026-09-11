@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_PRO_FRAME_OPTIONS, buildFrameSvg, gradientVector, FrameContent, FrameSettings } from '../frame/svg';
+import { DEFAULT_PRO_FRAME_OPTIONS, buildFrameSvg, buildMultiFrameSvg, gradientVector, FrameContent, FrameSettings } from '../frame/svg';
 
 const baseSettings: FrameSettings = {
   backgroundType: 'gradient',
@@ -214,6 +214,52 @@ test('buildFrameSvg (Pro) draws a QR code in a band under the card and moves a r
   const tooLong = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, qr: { text: 'x'.repeat(500), size: 80 } } });
   assert.doesNotMatch(tooLong, /sf-qr/);
   assert.match(tooLong, /height="332"/);
+});
+
+test('buildMultiFrameSvg lays two labelled cards side by side with a gap, sized to the taller one', () => {
+  const after = { ...content, width: 300, height: 100, lines: [[{ text: 'after' }]] };
+  const svg = buildMultiFrameSvg(
+    [
+      { content, fileName: 'a.ts', label: 'Before' },
+      { content: after, fileName: 'b.ts', label: 'After' },
+    ],
+    baseSettings,
+    'side-by-side',
+  );
+  // cards 432 and 332 wide, 24px gap, 32px padding each side: 432+24+332+64 = 852
+  assert.match(svg, /width="852"/);
+  // tallest card 268 + 24px label band + 64 padding = 356
+  assert.match(svg, /height="356"/);
+  assert.match(svg, /<clipPath id="sf-card-clip-0">/);
+  assert.match(svg, /<clipPath id="sf-card-clip-1">/);
+  assert.match(svg, /<text x="32" y="44"[^>]*>Before<\/text>/, 'label sits in the band above the first card');
+  assert.match(svg, /<text x="488" y="44"[^>]*>After<\/text>/, 'second label starts at 32 + 432 + 24');
+  assert.match(svg, /<rect x="488" y="56" width="332" height="168" rx="12"/, 'second card starts after the gap, below the label band');
+  assert.match(svg, />a\.ts</);
+  assert.match(svg, />b\.ts</);
+});
+
+test('buildMultiFrameSvg stacks cards vertically when asked, each under its own label', () => {
+  const svg = buildMultiFrameSvg(
+    [
+      { content, fileName: 'a.ts', label: 'Before' },
+      { content, fileName: 'a.ts', label: 'After' },
+    ],
+    baseSettings,
+    'stacked',
+  );
+  assert.match(svg, /width="496"/, 'as wide as one card');
+  // 2 cards of 268 + 24 gap + 2 label bands of 24 + 64 padding = 672
+  assert.match(svg, /height="672"/);
+  assert.match(svg, /<text x="32" y="44"[^>]*>Before<\/text>/);
+  // second label band starts at 32 + 24 + 268 + 24 = 348; its text is centred 12px below that
+  assert.match(svg, /<text x="32" y="360"[^>]*>After<\/text>/);
+  assert.match(svg, /<rect x="32" y="372" width="432" height="268"/);
+});
+
+test('buildMultiFrameSvg with one unlabelled panel is exactly buildFrameSvg', () => {
+  assert.equal(buildMultiFrameSvg([{ content, fileName: 'index.ts' }], baseSettings, 'side-by-side'), buildFrameSvg(content, 'index.ts', baseSettings));
+  assert.throws(() => buildMultiFrameSvg([], baseSettings, 'stacked'));
 });
 
 test('buildFrameSvg omits the gutter and line numbers when lineNumbers is off', () => {

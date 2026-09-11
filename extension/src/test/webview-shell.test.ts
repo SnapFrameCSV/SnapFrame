@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { renderShell } from '../webview/shell';
-import { DEFAULT_PRO_FRAME_OPTIONS, buildFrameSvg, type FrameContent, type FrameSettings, type TextRun } from '../frame/svg';
+import { DEFAULT_PRO_FRAME_OPTIONS, buildFrameSvg, buildMultiFrameSvg, type FrameContent, type FrameSettings, type TextRun } from '../frame/svg';
 import { buildPdf, splitRgba } from '../export/pdf';
 
 /**
@@ -423,6 +423,42 @@ test('webview shell: a Pro background image (data URI) and caption still export 
     assert.deepEqual(pngSize(png), dims);
     const [corner] = await samplePixels(page, png, [[2, 2]]);
     assert.deepEqual(corner, [0, 0, 255, 255], 'the background image covers the red backdrop');
+
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('webview shell: a two-card comparison exports as one PNG', async () => {
+  const browser = await chromium.launch(launchOptions());
+  try {
+    const page = await loadShell(browser, false);
+    const before = await render(page, null, 'const x = 1;', 'before.ts', 1);
+    const svg = buildMultiFrameSvg(
+      [
+        { content: toContent(before, 1), fileName: 'before.ts', label: 'Before' },
+        { content: toContent(before, 1), fileName: 'after.ts', label: 'After' },
+      ],
+      TEST_FRAME_SETTINGS,
+      'side-by-side',
+    );
+    const dims = svgDims(svg);
+    await sendSvg(page, svg, 1, false, true);
+    await page.waitForFunction(() => document.getElementById('export-btn')?.style.display === 'inline-block');
+    await page.click('#export-btn');
+    const png = await exportedPng(page);
+    assert.deepEqual(pngSize(png), dims);
+    // Two cards: a card-coloured pixel inside each, backdrop red in the gap between them.
+    const cardWidth = before.width + 32 + String(1).length * 9 + 20;
+    const [first, gap, second] = await samplePixels(page, png, [
+      [16 + 8, 16 + 24 + 36 + 8],
+      [16 + cardWidth + 12, 16 + 24 + 36 + 8],
+      [16 + cardWidth + 24 + 8, 16 + 24 + 36 + 8],
+    ]);
+    assert.deepEqual(first, [30, 30, 30, 255]);
+    assert.deepEqual(gap, [255, 0, 0, 255]);
+    assert.deepEqual(second, [30, 30, 30, 255]);
 
     await page.close();
   } finally {

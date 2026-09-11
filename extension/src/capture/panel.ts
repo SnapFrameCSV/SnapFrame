@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { resolveCaptureSource } from './source';
-import { buildFrameSvg, type TextRun } from '../frame/svg';
-import { readFrameSettings, readExportSettings, readProFrameOptions } from '../frame/settings';
+import { buildFrameSvg, buildMultiFrameSvg, type FrameContent, type TextRun } from '../frame/svg';
+import { readFrameSettings, readExportSettings, readLayoutSettings, readProFrameOptions } from '../frame/settings';
 import { buildExportFileName } from '../export/filename';
 import { FORMAT_LABELS, isFormatAllowed, type ExportFormat } from '../export/formats';
 import { buildPdf, splitRgba } from '../export/pdf';
@@ -29,17 +29,30 @@ interface ReturnTarget {
  * session is short-lived, auto-exports as soon as its frame is built, and
  * closes itself.
  */
+type CaptureRole = 'single' | 'before' | 'after';
+
 interface Session {
   panel: vscode.WebviewPanel;
   quick: boolean;
+  /** Pro before/after: which half of a comparison this capture is. */
+  role: CaptureRole;
   capture?: LastCapture;
   returnTo?: ReturnTarget;
   /** The last frame SVG built for this session, for vector export. */
   svg?: string;
 }
 
+interface MeasuredPanel {
+  content: FrameContent;
+  fileName: string;
+}
+
 let previewSession: Session | undefined;
 let configListener: vscode.Disposable | undefined;
+/** The "before" half of a comparison, waiting for its "after". */
+let pendingBefore: MeasuredPanel | undefined;
+/** Both halves once compared, so settings changes re-render the comparison rather than the last single capture. */
+let lastComparison: [MeasuredPanel, MeasuredPanel] | undefined;
 
 /**
  * `snapframe.capture`: grabs the current selection (or whole file) as
@@ -48,7 +61,39 @@ let configListener: vscode.Disposable | undefined;
  * preview webview, with an Export PNG button to rasterise and save it.
  */
 export function runCapture(context: vscode.ExtensionContext): Promise<void> {
-  return startCapture(context, false);
+  return startCapture(context, false, 'single');
+}
+
+/**
+ * Pro before/after: `snapframe.captureBefore` captures and previews the first
+ * snippet and remembers it; `snapframe.captureAfter` captures the second and
+ * renders both cards together (side by side or stacked, per settings), which
+ * then exports like any other frame.
+ */
+export function runCaptureBefore(context: vscode.ExtensionContext): Promise<void> {
+  if (!requirePro('Before/after comparison')) {
+    return Promise.resolve();
+  }
+  return startCapture(context, false, 'before');
+}
+
+export function runCaptureAfter(context: vscode.ExtensionContext): Promise<void> {
+  if (!requirePro('Before/after comparison')) {
+    return Promise.resolve();
+  }
+  if (!pendingBefore) {
+    void vscode.window.showInformationMessage('Snapframe: capture the "before" snippet first (Snapframe: Capture as \'Before\').');
+    return Promise.resolve();
+  }
+  return startCapture(context, false, 'after');
+}
+
+function requirePro(feature: string): boolean {
+  if (isPro()) {
+    return true;
+  }
+  void vscode.window.showInformationMessage(`Snapframe: ${feature} is a Pro feature. Run "Snapframe: Buy Pro…" to unlock it.`);
+  return false;
 }
 
 /**
@@ -60,10 +105,10 @@ export function runCapture(context: vscode.ExtensionContext): Promise<void> {
  * and hands focus back to the editor. Any open preview panel is left alone.
  */
 export function runQuickSnap(context: vscode.ExtensionContext): Promise<void> {
-  return startCapture(context, true);
+  return startCapture(context, true, 'single');
 }
 
-async function startCapture(context: vscode.ExtensionContext, quick: boolean): Promise<void> {
+async function startCapture(context: vscode.ExtensionContext, quick: boolean, role: CaptureRole): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     void vscode.window.showWarningMessage('Snapframe: open a file and place your cursor or make a selection first.');
@@ -85,6 +130,10 @@ async function startCapture(context: vscode.ExtensionContext, quick: boolean): P
   }
 
   const session = quick ? createSession(context, true) : getOrCreatePreviewSession(context);
+  session.role = role;
+  if (role !== 'after') {
+    lastComparison = undefined;
+  }
   if (quick) {
     session.returnTo = { document: editor.document, viewColumn: editor.viewColumn, selection: originalSelection };
   }
@@ -251,7 +300,7 @@ function createSession(context: vscode.ExtensionContext, quick: boolean): Sessio
       localResourceRoots: [],
     },
   );
-  const session: Session = { panel, quick };
+  const session: Session = { panel, quick, role: 'single' };
 
   panel.webview.onDidReceiveMessage((message: PanelMessage) => {
     void handleMessage(session, message);
@@ -262,8 +311,8 @@ function createSession(context: vscode.ExtensionContext, quick: boolean): Sessio
 
 async function handleMessage(session: Session, message: PanelMessage): Promise<void> {
   if (message.type === 'measured') {
-    const svg = buildFrameSvg(
-      {
+    const panel: MeasuredPanel = {
+      content: {
         lines: message.lines ?? [],
         width: message.width ?? 0,
         height: message.height ?? 0,
@@ -274,9 +323,31 @@ async function handleMessage(session: Session, message: PanelMessage): Promise<v
         color: message.color ?? '#d4d4d4',
         background: message.background ?? '#1e1e1e',
       },
-      message.fileName ?? '',
-      { ...readFrameSettings(), pro: await readProFrameOptions() },
-    );
+      fileName: message.fileName ?? '',
+    };
+    const settings = { ...readFrameSettings(), pro: await readProFrameOptions() };
+    let svg: string;
+    if (session.role === 'before') {
+      pendingBefore = panel;
+      svg = buildFrameSvg(panel.content, panel.fileName, settings);
+      vscode.window.setStatusBarMessage('Snapframe: "before" captured — now select the "after" code and run Snapframe: Capture as \'After\'.', 8000);
+    } else if (session.role === 'after' && (pendingBefore || lastComparison)) {
+      // A settings change re-renders the "after" session; keep comparing the same pair.
+      const pair: [MeasuredPanel, MeasuredPanel] = lastComparison && !pendingBefore ? [lastComparison[0], panel] : [pendingBefore as MeasuredPanel, panel];
+      pendingBefore = undefined;
+      lastComparison = pair;
+      const layout = readLayoutSettings();
+      svg = buildMultiFrameSvg(
+        [
+          { ...pair[0], label: layout.labels[0] },
+          { ...pair[1], label: layout.labels[1] },
+        ],
+        settings,
+        layout.comparison,
+      );
+    } else {
+      svg = buildFrameSvg(panel.content, panel.fileName, settings);
+    }
     session.svg = svg;
     const { scale, copyToClipboardAfterExport } = readExportSettings();
     void session.panel.webview.postMessage({
