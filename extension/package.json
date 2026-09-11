@@ -205,6 +205,18 @@
           "default": "right",
           "description": "Where the caption sits under the frame. Pro."
         },
+        "snapframe.qr.text": {
+          "type": "string",
+          "default": "",
+          "description": "A URL or short text (up to 213 bytes) to draw as a QR code under the frame — typically your repo, gist or docs link. Generated locally. Empty for none. Pro."
+        },
+        "snapframe.qr.size": {
+          "type": "number",
+          "minimum": 48,
+          "maximum": 240,
+          "default": 80,
+          "description": "Side length of the QR code in pixels at 1×. Pro."
+        },
         "snapframe.highlightLines": {
           "type": "string",
           "default": "",
@@ -320,6 +332,7 @@
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.28.2",
+    "jsqr": "^1.4.0",
     "playwright": "^1.63.0",
     "typescript": "^5.6.0"
   }

@@ -201,6 +201,21 @@ test('buildFrameSvg (Pro) pins a callout pill to the right edge of its row, esca
   assert.match(long, />x{40}<\/text>/);
 });
 
+test('buildFrameSvg (Pro) draws a QR code in a band under the card and moves a right caption out of its way', () => {
+  const svg = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, qr: { text: 'https://example.com', size: 80 } } });
+  assert.match(svg, /height="428"/, '332 + a band of 80 + 2*8');
+  // white tile right-aligned to the card edge (496 - 32 - 80 = 384) in the band starting at 32 + 268 + 16 = 316, + 8
+  assert.match(svg, /<g class="sf-qr"><rect x="384" y="324" width="80" height="80" rx="[\d.]+" fill="#ffffff" \/><g fill="#000000" shape-rendering="crispEdges">(<rect [^>]+\/>){50,}<\/g><\/g>/);
+  const both = buildFrameSvg(content, 'index.ts', {
+    ...baseSettings,
+    pro: { ...DEFAULT_PRO_FRAME_OPTIONS, qr: { text: 'https://example.com', size: 80 }, caption: { text: '@me', color: '#fff', position: 'right' } },
+  });
+  assert.match(both, /<text x="32" y="364" text-anchor="start"[^>]*>@me<\/text>/, 'caption goes left, centred in the shared band');
+  const tooLong = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, qr: { text: 'x'.repeat(500), size: 80 } } });
+  assert.doesNotMatch(tooLong, /sf-qr/);
+  assert.match(tooLong, /height="332"/);
+});
+
 test('buildFrameSvg omits the gutter and line numbers when lineNumbers is off', () => {
   const svg = buildFrameSvg(content, 'index.ts', baseSettings);
   assert.match(svg, /width="496"/); // unchanged from the no-gutter case above

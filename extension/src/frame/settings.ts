@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { DEFAULT_PRO_FRAME_OPTIONS, FrameSettings, type FrameCallout, type ProFrameOptions } from './svg';
+import { DEFAULT_PRO_FRAME_OPTIONS, FrameSettings, QR_MAX_SIZE, QR_MIN_SIZE, type FrameCallout, type ProFrameOptions } from './svg';
 import { parseLineRanges } from './ranges';
+import { MAX_QR_BYTES, encodeQr } from './qr';
 import { allowedBackgroundType, allowedProFrameOptions, allowedScale, type ExportScale } from '../export/formats';
 import { isPro } from '../licence/verify';
 
@@ -37,6 +38,7 @@ export async function readProFrameOptions(): Promise<ProFrameOptions> {
     highlightColor: config.get<string>('highlightColor', DEFAULT_PRO_FRAME_OPTIONS.highlightColor),
     focusDim: config.get<boolean>('focusDim', false),
     callouts: readCallouts(config.get<unknown>('callouts', [])),
+    qr: readQr(config.get<string>('qr.text', ''), config.get<number>('qr.size', 80)),
   };
   const pro = isPro();
   const imagePath = config.get<string>('background.image', '').trim();
@@ -44,6 +46,26 @@ export async function readProFrameOptions(): Promise<ProFrameOptions> {
     requested.backgroundImage = await loadBackgroundImage(imagePath);
   }
   return allowedProFrameOptions(requested, pro, DEFAULT_PRO_FRAME_OPTIONS);
+}
+
+let warnedQrText: string | undefined;
+
+/** Validates the QR text once up front so an unencodable value warns instead of silently drawing nothing. */
+function readQr(text: string, size: number): ProFrameOptions['qr'] {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  try {
+    encodeQr(trimmed);
+  } catch {
+    if (warnedQrText !== trimmed) {
+      warnedQrText = trimmed;
+      void vscode.window.showWarningMessage(`Snapframe: the QR text is too long to encode (max ${MAX_QR_BYTES} bytes); skipping the QR code.`);
+    }
+    return undefined;
+  }
+  return { text: trimmed, size: Math.min(QR_MAX_SIZE, Math.max(QR_MIN_SIZE, Number.isFinite(size) ? size : 80)) };
 }
 
 function readCallouts(value: unknown): FrameCallout[] {

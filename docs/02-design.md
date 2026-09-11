@@ -32,7 +32,8 @@ Every documented backlash against paid VS Code extensions came from taking somet
 | Correct de-indentation and soft-wrap (the top two CodeSnap complaints) | Named presets, saved and shareable as JSON |
 | Window chrome, padding, background colour, shadow, rounded corners, optional line numbers and title bar | Custom gradients/background images, brand colour, the user's own caption or handle |
 | Export PNG to file **and copy the image to the clipboard**, 1× and 2× | Line highlighting, focus-dim ranges, inline annotations and callouts |
-| One-command "quick snap" with last settings; keyboard shortcut | Before/after and side-by-side layouts; terminal-selection capture |
+| One-command "quick snap" with last settings; keyboard shortcut | A QR code (repo, gist or docs link) in the image, generated locally (added 2026-09-11, D16) |
+| | Before/after and side-by-side layouts; terminal-selection capture |
 | Works in VS Code, Cursor, Windsurf, VSCodium (published on both marketplaces) | Batch export of all selections / open editors; "copy as Markdown image link" |
 
 ### Name and identity

@@ -22,7 +22,8 @@ Pro is strictly additive. The free tier never gets a watermark, an advert, a nag
 | Correct de-indentation and soft-wrap | Named presets, saved and shareable as JSON |
 | Window chrome, padding, background colour, shadow, rounded corners, optional line numbers and title bar | Custom gradients/background images, brand colour, your own caption or handle |
 | Export PNG to file **and copy the image to the clipboard**, 1× and 2× | Line highlighting, focus-dim ranges, inline annotations and callouts |
-| One-command "quick snap" with last settings; keyboard shortcut | Before/after and side-by-side layouts; terminal-selection capture |
+| One-command "quick snap" with last settings; keyboard shortcut | A QR code (your repo, gist or docs link) in the image, generated locally |
+| | Before/after and side-by-side layouts; terminal-selection capture |
 | Works in VS Code, Cursor, Windsurf, VSCodium | Batch export of all selections / open editors; "copy as Markdown image link" |
 
 A Pro key is a one-time purchase, works on up to three machines and is verified offline — no account, no sign-in, no phone-home.

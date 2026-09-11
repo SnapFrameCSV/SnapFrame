@@ -11,6 +11,8 @@
  * renders identically in any SVG renderer rather than only in a browser.
  */
 
+import { encodeQr, type QrMatrix } from './qr';
+
 export interface FrameSettings {
   /** `transparent` (Pro) draws no backdrop at all, so PNG/WebP/PDF keep alpha. */
   backgroundType: 'solid' | 'gradient' | 'transparent';
@@ -54,6 +56,8 @@ export interface ProFrameOptions {
   focusDim: boolean;
   /** Small labels pinned to the right edge of a row. */
   callouts: FrameCallout[];
+  /** A QR code (URL or text) drawn in a band under the card, right-aligned. */
+  qr?: { text: string; size: number };
 }
 
 export const DEFAULT_PRO_FRAME_OPTIONS: ProFrameOptions = {
@@ -121,6 +125,10 @@ const CALLOUT_CHAR_WIDTH = 6.5;
 const CALLOUT_PADDING_X = 8;
 const CALLOUT_HEIGHT = 18;
 const CALLOUT_MAX_CHARS = 40;
+const QR_BAND_PADDING = 8;
+const QR_QUIET_MODULES = 2;
+export const QR_MIN_SIZE = 48;
+export const QR_MAX_SIZE = 240;
 
 export function buildFrameSvg(content: FrameContent, fileName: string, settings: FrameSettings): string {
   const titleBarHeight = settings.titleBar ? TITLE_BAR_HEIGHT : 0;
@@ -133,10 +141,14 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
   const cardHeight = textHeight + CODE_PADDING * 2 + titleBarHeight;
   const padding = Math.max(0, settings.padding);
   const pro = settings.pro ?? DEFAULT_PRO_FRAME_OPTIONS;
+  const qr = pro.qr && pro.qr.text.trim() ? encodeQrOrNull(pro.qr.text.trim()) : null;
+  const qrSize = qr ? clamp(pro.qr?.size ?? 80, QR_MIN_SIZE, QR_MAX_SIZE) : 0;
   const caption = pro.caption && pro.caption.text.trim() ? pro.caption : undefined;
-  const captionHeight = caption ? CAPTION_BAND_HEIGHT : 0;
+  // The band under the card holds the caption and/or the QR code.
+  const bandHeight = Math.max(caption ? CAPTION_BAND_HEIGHT : 0, qr ? qrSize + QR_BAND_PADDING * 2 : 0);
   const totalWidth = cardWidth + padding * 2;
-  const totalHeight = cardHeight + padding * 2 + captionHeight;
+  const totalHeight = cardHeight + padding * 2 + bandHeight;
+  const bandTop = padding + cardHeight + padding / 2;
   const radius = clamp(settings.cornerRadius, 0, Math.min(cardWidth, cardHeight) / 2);
   const textX = padding + gutterWidth + CODE_PADDING;
   const textTop = padding + titleBarHeight + CODE_PADDING;
@@ -160,7 +172,11 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
     pro.backgroundImage && pro.backgroundImage.startsWith('data:image/')
       ? `<image href="${escapeAttr(pro.backgroundImage)}" x="0" y="0" width="${totalWidth}" height="${totalHeight}" preserveAspectRatio="xMidYMid slice" />`
       : '';
-  const captionMarkup = caption ? buildCaption(caption, padding, totalWidth, padding + cardHeight + padding / 2 + CAPTION_BAND_HEIGHT / 2) : '';
+  // With a QR on the right, a right-aligned caption moves left so they never overlap.
+  const captionMarkup = caption
+    ? buildCaption(qr && caption.position === 'right' ? { ...caption, position: 'left' } : caption, padding, totalWidth, bandTop + bandHeight / 2)
+    : '';
+  const qrMarkup = qr ? buildQr(qr, totalWidth - padding - qrSize, bandTop + (bandHeight - qrSize) / 2, qrSize) : '';
 
   const shadowFilter = settings.shadow
     ? `<filter id="sf-shadow" x="-30%" y="-30%" width="160%" height="160%">
@@ -184,6 +200,7 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
   ${backdrop}
   ${backgroundImageMarkup}
   ${captionMarkup}
+  ${qrMarkup}
   <g${settings.shadow ? ' filter="url(#sf-shadow)"' : ''}>
     <rect x="${padding}" y="${padding}" width="${cardWidth}" height="${cardHeight}" rx="${radius}" ry="${radius}" fill="${escapeAttr(content.background)}" />
   </g>
@@ -294,6 +311,44 @@ export function gradientVector(angleDegrees: number): { x1: string; y1: string; 
   dy /= scale;
   const fmt = (v: number) => String(Math.round(v * 1000) / 1000 + 0);
   return { x1: fmt(0.5 - dx / 2), y1: fmt(0.5 - dy / 2), x2: fmt(0.5 + dx / 2), y2: fmt(0.5 + dy / 2) };
+}
+
+function encodeQrOrNull(text: string): QrMatrix | null {
+  try {
+    return encodeQr(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The QR as vector squares on a white tile with a two-module quiet zone, so
+ * it stays sharp in SVG/PDF and scans against any backdrop. Dark modules are
+ * merged into per-row runs to keep the markup small.
+ */
+function buildQr(qr: QrMatrix, x: number, y: number, size: number): string {
+  const moduleSize = size / (qr.size + QR_QUIET_MODULES * 2);
+  const originX = x + moduleSize * QR_QUIET_MODULES;
+  const originY = y + moduleSize * QR_QUIET_MODULES;
+  const fmt = (v: number) => String(Math.round(v * 100) / 100);
+  const runs: string[] = [];
+  for (let row = 0; row < qr.size; row++) {
+    let col = 0;
+    while (col < qr.size) {
+      if (!qr.modules[row][col]) {
+        col++;
+        continue;
+      }
+      const start = col;
+      while (col < qr.size && qr.modules[row][col]) {
+        col++;
+      }
+      runs.push(
+        `<rect x="${fmt(originX + start * moduleSize)}" y="${fmt(originY + row * moduleSize)}" width="${fmt((col - start) * moduleSize)}" height="${fmt(moduleSize)}" />`,
+      );
+    }
+  }
+  return `<g class="sf-qr"><rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(size)}" height="${fmt(size)}" rx="${fmt(moduleSize)}" fill="#ffffff" /><g fill="#000000" shape-rendering="crispEdges">${runs.join('')}</g></g>`;
 }
 
 function buildCaption(caption: FrameCaption, padding: number, totalWidth: number, y: number): string {

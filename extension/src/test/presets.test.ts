@@ -36,6 +36,8 @@ test('every preset-able key is a real snapframe setting name', () => {
   const declared = [
     'highlightColor',
     'focusDim',
+    'qr.text',
+    'qr.size',
     'background.type',
     'background.color',
     'background.gradient',
