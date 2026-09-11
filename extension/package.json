@@ -78,6 +78,31 @@
         "command": "snapframe.openSettings",
         "title": "Open Settings",
         "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.savePreset",
+        "title": "Save Preset… (Pro)",
+        "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.applyPreset",
+        "title": "Apply Preset… (Pro)",
+        "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.deletePreset",
+        "title": "Delete Preset… (Pro)",
+        "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.exportPresets",
+        "title": "Export Presets to JSON… (Pro)",
+        "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.importPresets",
+        "title": "Import Presets from JSON… (Pro)",
+        "category": "Snapframe"
       }
     ],
     "keybindings": [

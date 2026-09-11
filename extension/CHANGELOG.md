@@ -12,3 +12,4 @@ All notable changes to Snapframe are listed here. The format follows [Keep a Cha
 - Buy Pro still reports that it is not available in this preview build.
 - Pro: **Export SVG** from the preview — the frame as a standalone vector file.
 - Pro: **Export WebP** and **Export PDF** (lossless, one page sized to the frame), a **transparent** background type, and **3×/4×** export scale. Without a key these settings fall back to their free equivalents; nothing free changes.
+- Pro: **Presets** — save the current frame settings under a name, apply or delete them from a quick pick, and export/import them as a JSON file to share.

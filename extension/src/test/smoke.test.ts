@@ -102,11 +102,16 @@ test('package.json declares every command the extension registers', () => {
   };
   const declared = manifest.contributes.commands.map((c) => c.command).sort();
   assert.deepEqual(declared, [
+    'snapframe.applyPreset',
     'snapframe.buyPro',
     'snapframe.capture',
+    'snapframe.deletePreset',
     'snapframe.enterLicence',
+    'snapframe.exportPresets',
+    'snapframe.importPresets',
     'snapframe.openSettings',
     'snapframe.quickSnap',
+    'snapframe.savePreset',
   ]);
   assert.equal(manifest.main, './dist/extension.js');
   assert.match(manifest.engines.vscode, /^\^1\.90\.0$/);
