@@ -13,6 +13,7 @@ interface LastCapture {
   fallbackText: string;
   fileName: string;
   startLine: number;
+  rawLineCount: number;
 }
 
 let lastCapture: LastCapture | undefined;
@@ -52,7 +53,13 @@ export async function runCapture(context: vscode.ExtensionContext): Promise<void
       return;
     }
     await vscode.env.clipboard.writeText(originalClipboardText);
-    lastCapture = { html: message.html ?? null, fallbackText: source.text, fileName: source.fileName, startLine: source.startLine };
+    lastCapture = {
+      html: message.html ?? null,
+      fallbackText: source.text,
+      fileName: source.fileName,
+      startLine: source.startLine,
+      rawLineCount: source.rawLineCount,
+    };
     sendRender(panel, lastCapture);
     readyDisposable.dispose();
   });
@@ -83,6 +90,7 @@ interface PanelMessage {
   width?: number;
   height?: number;
   fileName?: string;
+  lineCount?: number;
   bytes?: string;
   clipboardAttempted?: boolean;
   clipboardOk?: boolean;
@@ -140,6 +148,7 @@ function sendRender(panel: vscode.WebviewPanel, capture: LastCapture): void {
     html: capture.html,
     fallbackText: capture.fallbackText,
     fileName: capture.fileName,
+    rawLineCount: capture.rawLineCount,
   });
 }
 
@@ -158,7 +167,13 @@ function getOrCreatePanel(context: vscode.ExtensionContext): vscode.WebviewPanel
   activePanel.webview.onDidReceiveMessage((message: PanelMessage) => {
     if (message.type === 'measured') {
       const svg = buildFrameSvg(
-        { html: message.html ?? '', width: message.width ?? 0, height: message.height ?? 0 },
+        {
+          html: message.html ?? '',
+          width: message.width ?? 0,
+          height: message.height ?? 0,
+          startLine: lastCapture?.startLine ?? 1,
+          lineCount: message.lineCount ?? 1,
+        },
         message.fileName ?? '',
         readFrameSettings(),
       );
@@ -263,14 +278,14 @@ function renderShell(webview: vscode.Webview): string {
     window.addEventListener('message', (event) => {
       const message = event.data;
       if (message.type === 'render') {
-        renderCapture(message.html, message.fallbackText, message.fileName);
+        renderCapture(message.html, message.fallbackText, message.fileName, message.rawLineCount);
       } else if (message.type === 'svg') {
         status.textContent = 'Snapframe — ' + lastFileName;
         preview.innerHTML = message.svg;
         lastSvgText = message.svg;
         lastScale = message.scale || 2;
         lastCopyToClipboard = !!message.copyToClipboardAfterExport;
-        const dims = message.svg.match(/<svg[^>]*\swidth="(\\d+)"[^>]*\sheight="(\\d+)"/);
+        const dims = message.svg.match(/<svg[^>]*\\swidth="(\\d+)"[^>]*\\sheight="(\\d+)"/);
         lastDims = dims ? { width: Number(dims[1]), height: Number(dims[2]) } : null;
         exportBtn.style.display = lastDims ? 'inline-block' : 'none';
       }
@@ -341,7 +356,7 @@ function renderShell(webview: vscode.Webview): string {
       }
     }
 
-    function renderCapture(html, fallbackText, fileName) {
+    function renderCapture(html, fallbackText, fileName, rawLineCount) {
       status.textContent = 'Snapframe — ' + fileName;
       lastFileName = fileName;
       exportBtn.style.display = 'none';
@@ -356,7 +371,11 @@ function renderShell(webview: vscode.Webview): string {
       }
       const width = Math.ceil(measure.scrollWidth);
       const height = Math.ceil(measure.scrollHeight);
-      vscode.postMessage({ type: 'measured', html: measure.innerHTML, width, height, fileName });
+      // The highlighted-HTML path is never re-wrapped, so its row count is the
+      // raw selection's line span; the plain-text fallback went through
+      // soft-wrap, so its row count must come from the text actually shown.
+      const lineCount = html ? rawLineCount : Math.max(1, fallbackText.split('\\n').length);
+      vscode.postMessage({ type: 'measured', html: measure.innerHTML, width, height, fileName, lineCount });
     }
   </script>
 </body>

@@ -6,6 +6,13 @@ export interface CaptureSource {
   text: string;
   /** 1-based line number of the first captured line, for line-number display. */
   startLine: number;
+  /**
+   * Number of raw source lines spanned by the captured range. This is the
+   * right line count for the syntax-highlighted HTML capture (which is never
+   * re-wrapped) but NOT for the normalised plain-text fallback, which can
+   * gain rows from soft-wrap — callers must use `text`'s own line count there.
+   */
+  rawLineCount: number;
   fileName: string;
   languageId: string;
   /** The exact editor range that was captured, so callers can re-select it if needed. */
@@ -31,6 +38,7 @@ export function resolveCaptureSource(editor: vscode.TextEditor): CaptureSource {
   return {
     text: normalised,
     startLine: range.start.line + 1,
+    rawLineCount: range.end.line - range.start.line + 1,
     fileName: baseName(document.fileName),
     languageId: document.languageId,
     range,

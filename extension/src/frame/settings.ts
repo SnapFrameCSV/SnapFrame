@@ -13,6 +13,7 @@ export function readFrameSettings(): FrameSettings {
     cornerRadius: config.get<number>('cornerRadius', 12),
     windowControls: config.get<boolean>('windowControls', true),
     titleBar: config.get<boolean>('titleBar', true),
+    lineNumbers: config.get<boolean>('lineNumbers', true),
   };
 }
 

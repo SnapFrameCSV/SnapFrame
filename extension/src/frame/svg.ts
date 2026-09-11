@@ -15,6 +15,7 @@ export interface FrameSettings {
   cornerRadius: number;
   windowControls: boolean;
   titleBar: boolean;
+  lineNumbers: boolean;
 }
 
 export interface FrameContent {
@@ -24,6 +25,16 @@ export interface FrameContent {
   width: number;
   /** Measured natural height of the code block in CSS pixels, before padding/chrome. */
   height: number;
+  /** 1-based number of the first displayed line, for the gutter. */
+  startLine: number;
+  /**
+   * Number of rows actually rendered in `html`. Callers must count rows the
+   * same way the content was produced — the raw selection's line span for
+   * syntax-highlighted HTML (which is never re-wrapped), or the normalised
+   * text's own line count for the plain-text fallback (which can gain rows
+   * from soft-wrap) — otherwise the gutter drifts out of alignment.
+   */
+  lineCount: number;
 }
 
 const TITLE_BAR_HEIGHT = 36;
@@ -32,15 +43,28 @@ const WINDOW_DOT_RADIUS = 6;
 const WINDOW_DOT_GAP = 20;
 const WINDOW_DOT_INSET = 20;
 const CARD_BACKGROUND = '#1e1e1e';
+const LINE_NUMBER_FONT_SIZE = 12;
+const LINE_NUMBER_CHAR_WIDTH = 9;
+const LINE_NUMBER_GUTTER_PADDING = 20;
+const LINE_NUMBER_RIGHT_INSET = 12;
+const LINE_NUMBER_COLOR = 'rgba(255,255,255,0.35)';
 
 export function buildFrameSvg(content: FrameContent, fileName: string, settings: FrameSettings): string {
   const titleBarHeight = settings.titleBar ? TITLE_BAR_HEIGHT : 0;
-  const cardWidth = Math.max(1, content.width);
+  const lineCount = Math.max(1, content.lineCount);
+  const lastLine = content.startLine + lineCount - 1;
+  const gutterWidth = settings.lineNumbers ? String(lastLine).length * LINE_NUMBER_CHAR_WIDTH + LINE_NUMBER_GUTTER_PADDING : 0;
+  const codeWidth = Math.max(1, content.width);
+  const cardWidth = gutterWidth + codeWidth;
   const cardHeight = Math.max(1, content.height) + titleBarHeight;
   const padding = Math.max(0, settings.padding);
   const totalWidth = cardWidth + padding * 2;
   const totalHeight = cardHeight + padding * 2;
   const radius = clamp(settings.cornerRadius, 0, Math.min(cardWidth, cardHeight) / 2);
+  const codeX = padding + gutterWidth;
+  const lineNumbersMarkup = settings.lineNumbers
+    ? buildLineNumbers(content, lineCount, padding + gutterWidth - LINE_NUMBER_RIGHT_INSET, padding + titleBarHeight)
+    : '';
 
   const backgroundFill = settings.backgroundType === 'gradient' ? 'url(#sf-bg-gradient)' : settings.backgroundColor;
   const gradientDefs =
@@ -74,11 +98,24 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
   </clipPath>
   <g clip-path="url(#sf-card-clip)">
     ${titleBarMarkup}
-    <foreignObject x="${padding}" y="${padding + titleBarHeight}" width="${cardWidth}" height="${content.height}">
+    ${lineNumbersMarkup}
+    <foreignObject x="${codeX}" y="${padding + titleBarHeight}" width="${codeWidth}" height="${content.height}">
       <div xmlns="http://www.w3.org/1999/xhtml">${content.html}</div>
     </foreignObject>
   </g>
 </svg>`;
+}
+
+function buildLineNumbers(content: FrameContent, lineCount: number, textX: number, top: number): string {
+  const rowHeight = Math.max(1, content.height) / lineCount;
+  const rows: string[] = [];
+  for (let i = 0; i < lineCount; i++) {
+    const y = top + rowHeight * i + rowHeight / 2 + LINE_NUMBER_FONT_SIZE * 0.35;
+    rows.push(
+      `<text x="${textX}" y="${y}" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="${LINE_NUMBER_FONT_SIZE}" fill="${LINE_NUMBER_COLOR}">${content.startLine + i}</text>`,
+    );
+  }
+  return rows.join('\n    ');
 }
 
 function windowDots(originX: number, originY: number, barHeight: number): string {

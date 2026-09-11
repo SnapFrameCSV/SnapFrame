@@ -11,9 +11,10 @@ const baseSettings: FrameSettings = {
   cornerRadius: 12,
   windowControls: true,
   titleBar: true,
+  lineNumbers: false,
 };
 
-const content = { html: '<pre>const x = 1;</pre>', width: 400, height: 200 };
+const content = { html: '<pre>const x = 1;</pre>', width: 400, height: 200, startLine: 1, lineCount: 8 };
 
 test('buildFrameSvg sizes the canvas from content size, padding and title bar', () => {
   const svg = buildFrameSvg(content, 'index.ts', baseSettings);
@@ -54,7 +55,7 @@ test('buildFrameSvg omits the shadow filter when shadow is off', () => {
 });
 
 test('buildFrameSvg clamps corner radius to half the smaller card dimension', () => {
-  const svg = buildFrameSvg({ html: '<pre>x</pre>', width: 40, height: 10 }, 'a.ts', {
+  const svg = buildFrameSvg({ html: '<pre>x</pre>', width: 40, height: 10, startLine: 1, lineCount: 1 }, 'a.ts', {
     ...baseSettings,
     titleBar: false,
     cornerRadius: 999,
@@ -73,4 +74,28 @@ test('buildFrameSvg embeds the content html inside a foreignObject at the title-
   const svg = buildFrameSvg(content, 'index.ts', baseSettings);
   assert.match(svg, /<foreignObject x="32" y="68" width="400" height="200">/);
   assert.match(svg, /const x = 1;/);
+});
+
+test('buildFrameSvg omits the gutter and line numbers when lineNumbers is off', () => {
+  const svg = buildFrameSvg(content, 'index.ts', baseSettings);
+  assert.match(svg, /width="464"/); // unchanged from the no-gutter case above
+  assert.doesNotMatch(svg, /text-anchor="end"/);
+});
+
+test('buildFrameSvg widens the card with a numbered gutter when lineNumbers is on', () => {
+  const svg = buildFrameSvg(content, 'index.ts', { ...baseSettings, lineNumbers: true });
+  // 1 digit (lines 1-8) * 9 + 20 = 29px gutter; card 400+29=429; total 429+64=493
+  assert.match(svg, /width="493"/);
+  assert.match(svg, /<foreignObject x="61" /);
+  assert.match(svg, />1</);
+  assert.match(svg, />8</);
+});
+
+test('buildFrameSvg numbers from the capture start line and widens the gutter for more digits', () => {
+  const svg = buildFrameSvg({ ...content, startLine: 97, lineCount: 8 }, 'index.ts', { ...baseSettings, lineNumbers: true });
+  // last line 97+8-1=104, 3 digits * 9 + 20 = 47px gutter; card 400+47=447; total 447+64=511
+  assert.match(svg, /width="511"/);
+  assert.match(svg, />97</);
+  assert.match(svg, />104</);
+  assert.doesNotMatch(svg, />1</);
 });
