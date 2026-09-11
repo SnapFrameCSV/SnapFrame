@@ -23,8 +23,14 @@ jobs:
         run: bash scripts/preflight.sh
 
   extension:
-    name: Extension
-    runs-on: ubuntu-latest
+    name: Extension (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The webview/golden suite runs in headless Chromium on every OS the
+        # design names; the .vsix is packaged and uploaded from Linux only.
+        os: [ubuntu-latest, windows-latest, macos-latest]
     defaults:
       run:
         working-directory: extension
@@ -44,8 +50,10 @@ jobs:
       - name: Test
         run: npm test
       - name: Package
+        if: matrix.os == 'ubuntu-latest'
         run: npm run package
       - name: Upload .vsix
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: snapframe-vsix
