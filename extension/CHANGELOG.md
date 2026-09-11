@@ -18,3 +18,4 @@ All notable changes to Snapframe are listed here. The format follows [Keep a Cha
 - Pro: a **QR code** under the frame from `snapframe.qr.text` (your repo, gist or docs link), generated on your machine as crisp vector squares.
 - Pro: **Before/after comparisons** — *Capture as 'Before'*, then *Capture as 'After' and Compare* renders both snippets in one image, side by side or stacked, with labels you can change.
 - Pro: **Capture Terminal Selection** — frame text selected in the integrated terminal, titled with the terminal's name.
+- Pro: **Export All Selections** (one image per multi-cursor selection) and **Export All Open Editors** straight into your export folder, and an option to **copy a Markdown image link** after every export.

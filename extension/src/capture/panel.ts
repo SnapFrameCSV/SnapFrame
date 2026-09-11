@@ -7,6 +7,7 @@ import { readFrameSettings, readExportSettings, readLayoutSettings, readProFrame
 import { buildExportFileName } from '../export/filename';
 import { FORMAT_LABELS, isFormatAllowed, type ExportFormat } from '../export/formats';
 import { buildPdf, splitRgba } from '../export/pdf';
+import { markdownImageLink } from '../export/markdown';
 import { isPro } from '../licence/verify';
 import { renderShell } from '../webview/shell';
 
@@ -41,6 +42,9 @@ interface Session {
   returnTo?: ReturnTarget;
   /** The last frame SVG built for this session, for vector export. */
   svg?: string;
+  /** Batch export: save here without asking, and resolve `done` when the export has finished or failed. */
+  exportFolder?: string;
+  done?: () => void;
 }
 
 interface MeasuredPanel {
@@ -143,7 +147,93 @@ export async function runCaptureTerminal(context: vscode.ExtensionContext): Prom
   await startCapture(context, false, 'single', { text: prepared.text, fileName: terminal.name || 'terminal', lineCount: prepared.lineCount });
 }
 
-async function startCapture(context: vscode.ExtensionContext, quick: boolean, role: CaptureRole, plain?: PlainSource): Promise<void> {
+interface BatchOptions {
+  exportFolder: string;
+}
+
+/**
+ * `snapframe.exportAllSelections` (Pro): one image per selection (multi-cursor)
+ * in the active editor, exported without prompting into the export folder —
+ * asked for once if the setting is empty.
+ */
+export async function runExportAllSelections(context: vscode.ExtensionContext): Promise<void> {
+  if (!requirePro('Batch export')) {
+    return;
+  }
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    void vscode.window.showWarningMessage('Snapframe: open a file and make one or more selections first.');
+    return;
+  }
+  const selections = editor.selections.filter((s) => !s.isEmpty);
+  if (selections.length === 0) {
+    void vscode.window.showWarningMessage('Snapframe: make one or more selections first (hold Alt/Option to add more).');
+    return;
+  }
+  const folder = await resolveBatchFolder();
+  if (!folder) {
+    return;
+  }
+  const original = editor.selections;
+  let exported = 0;
+  try {
+    for (const selection of selections) {
+      editor.selections = [selection];
+      await startCapture(context, true, 'single', undefined, { exportFolder: folder });
+      exported++;
+    }
+  } finally {
+    editor.selections = original;
+  }
+  vscode.window.setStatusBarMessage(`Snapframe: exported ${exported} image${exported === 1 ? '' : 's'} to ${folder}.`, 8000);
+}
+
+/** `snapframe.exportAllEditors` (Pro): one whole-file image per open text editor tab. */
+export async function runExportAllEditors(context: vscode.ExtensionContext): Promise<void> {
+  if (!requirePro('Batch export')) {
+    return;
+  }
+  const uris: vscode.Uri[] = [];
+  for (const group of vscode.window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      const input = tab.input;
+      if (input instanceof vscode.TabInputText && !uris.some((u) => u.toString() === input.uri.toString())) {
+        uris.push(input.uri);
+      }
+    }
+  }
+  if (uris.length === 0) {
+    void vscode.window.showWarningMessage('Snapframe: no text editors are open.');
+    return;
+  }
+  const folder = await resolveBatchFolder();
+  if (!folder) {
+    return;
+  }
+  const previous = vscode.window.activeTextEditor;
+  let exported = 0;
+  for (const uri of uris) {
+    const editor = await vscode.window.showTextDocument(uri, { preview: false, preserveFocus: false });
+    editor.selections = [new vscode.Selection(0, 0, 0, 0)];
+    await startCapture(context, true, 'single', undefined, { exportFolder: folder });
+    exported++;
+  }
+  if (previous && !previous.document.isClosed) {
+    await vscode.window.showTextDocument(previous.document, { viewColumn: previous.viewColumn, preserveFocus: false });
+  }
+  vscode.window.setStatusBarMessage(`Snapframe: exported ${exported} image${exported === 1 ? '' : 's'} to ${folder}.`, 8000);
+}
+
+async function resolveBatchFolder(): Promise<string | undefined> {
+  const { exportFolder } = readExportSettings();
+  if (exportFolder) {
+    return exportFolder;
+  }
+  const chosen = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false, title: 'Folder for the exported images' });
+  return chosen?.[0]?.fsPath;
+}
+
+async function startCapture(context: vscode.ExtensionContext, quick: boolean, role: CaptureRole, plain?: PlainSource, batch?: BatchOptions): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!plain && !editor) {
     void vscode.window.showWarningMessage('Snapframe: open a file and place your cursor or make a selection first.');
@@ -179,6 +269,14 @@ async function startCapture(context: vscode.ExtensionContext, quick: boolean, ro
   if (quick) {
     session.returnTo = returnTo;
   }
+  let finished: Promise<void> | undefined;
+  if (batch) {
+    session.exportFolder = batch.exportFolder;
+    finished = new Promise<void>((resolve) => {
+      session.done = resolve;
+    });
+    session.panel.onDidDispose(() => session.done?.());
+  }
   session.panel.webview.html = renderShell(session.panel.webview.cspSource, quick);
 
   const readyDisposable = session.panel.webview.onDidReceiveMessage(async (message: { type: string; html?: string }) => {
@@ -194,6 +292,9 @@ async function startCapture(context: vscode.ExtensionContext, quick: boolean, ro
 
   if (!quick) {
     ensureConfigListener(context, session);
+  }
+  if (finished) {
+    await finished;
   }
 }
 
@@ -252,7 +353,13 @@ interface ClipboardOutcome {
  * Pro-only formats are refused here too, so a stray message can't bypass the
  * webview's gating.
  */
-async function saveExport(capture: LastCapture, bytes: Uint8Array, format: ExportFormat, clipboard: ClipboardOutcome): Promise<void> {
+async function saveExport(
+  capture: LastCapture,
+  bytes: Uint8Array,
+  format: ExportFormat,
+  clipboard: ClipboardOutcome,
+  folderOverride?: string,
+): Promise<void> {
   if (bytes.length === 0) {
     return;
   }
@@ -261,7 +368,8 @@ async function saveExport(capture: LastCapture, bytes: Uint8Array, format: Expor
     void vscode.window.showInformationMessage(`Snapframe: ${label} export is a Pro feature. Run "Snapframe: Buy Pro…" to unlock it.`);
     return;
   }
-  const { exportFolder } = readExportSettings();
+  const settings = readExportSettings();
+  const exportFolder = folderOverride ?? settings.exportFolder;
   const fileName = buildExportFileName(capture.fileName, capture.startLine, format);
 
   let targetUri: vscode.Uri;
@@ -287,7 +395,13 @@ async function saveExport(capture: LastCapture, bytes: Uint8Array, format: Expor
   }
 
   const savedMessage = `Snapframe: saved ${targetUri.fsPath}`;
-  if (clipboard.attempted && clipboard.ok) {
+  if (settings.copyMarkdownLink && !clipboard.attempted) {
+    // Pro: a ready-to-paste Markdown image link (never when the image itself
+    // was just copied — the two would fight over the clipboard).
+    const workspaceRoot = vscode.workspace.getWorkspaceFolder(targetUri)?.uri.fsPath;
+    await vscode.env.clipboard.writeText(markdownImageLink(capture.fileName, targetUri.fsPath, workspaceRoot));
+    vscode.window.setStatusBarMessage(`${savedMessage} and copied a Markdown link.`, 6000);
+  } else if (clipboard.attempted && clipboard.ok) {
     vscode.window.setStatusBarMessage(`${savedMessage} and copied to clipboard.`, 6000);
   } else if (clipboard.attempted && !clipboard.ok) {
     vscode.window.setStatusBarMessage(`${savedMessage} — clipboard copy wasn't supported here, saved the file instead.`, 6000);
@@ -409,13 +523,17 @@ async function handleMessage(session: Session, message: PanelMessage): Promise<v
       // for as short a time as possible; the bytes are already in hand.
       session.panel.dispose();
     }
-    await saveExport(capture, Buffer.from(message.bytes ?? '', 'base64'), format as ExportFormat, {
-      attempted: message.clipboardAttempted ?? false,
-      ok: message.clipboardOk ?? false,
-    });
+    await saveExport(
+      capture,
+      Buffer.from(message.bytes ?? '', 'base64'),
+      format as ExportFormat,
+      { attempted: message.clipboardAttempted ?? false, ok: message.clipboardOk ?? false },
+      session.exportFolder,
+    );
     if (session.quick) {
       await returnToEditor(session);
     }
+    session.done?.();
     return;
   }
 
@@ -451,6 +569,7 @@ async function handleMessage(session: Session, message: PanelMessage): Promise<v
       session.panel.dispose();
       await returnToEditor(session);
     }
+    session.done?.();
   }
 }
 

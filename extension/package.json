@@ -95,6 +95,16 @@
         "category": "Snapframe"
       },
       {
+        "command": "snapframe.exportAllSelections",
+        "title": "Export All Selections (Pro)",
+        "category": "Snapframe"
+      },
+      {
+        "command": "snapframe.exportAllEditors",
+        "title": "Export All Open Editors (Pro)",
+        "category": "Snapframe"
+      },
+      {
         "command": "snapframe.savePreset",
         "title": "Save Preset… (Pro)",
         "category": "Snapframe"
@@ -352,6 +362,11 @@
           "type": "boolean",
           "default": false,
           "description": "After exporting, also copy the image to the clipboard."
+        },
+        "snapframe.copyMarkdownLinkAfterExport": {
+          "type": "boolean",
+          "default": false,
+          "description": "After exporting, copy a ready-to-paste Markdown image link (relative to the workspace when possible). Ignored when the image itself is being copied. Pro."
         }
       }
     }

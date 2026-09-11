@@ -137,14 +137,18 @@ export interface ExportSettings {
   scale: ExportScale;
   exportFolder: string;
   copyToClipboardAfterExport: boolean;
+  /** Pro: copy a `![name](path)` link after saving. Always false without a key. */
+  copyMarkdownLink: boolean;
 }
 
-/** Reads the export settings with the Pro scale gate applied. Not pure (reads vscode config), so left untested like readFrameSettings. */
+/** Reads the export settings with the Pro gates applied. Not pure (reads vscode config), so left untested like readFrameSettings. */
 export function readExportSettings(): ExportSettings {
   const config = vscode.workspace.getConfiguration('snapframe');
+  const pro = isPro();
   return {
-    scale: allowedScale(config.get<number>('scale', 2), isPro()),
+    scale: allowedScale(config.get<number>('scale', 2), pro),
     exportFolder: config.get<string>('exportFolder', ''),
     copyToClipboardAfterExport: config.get<boolean>('copyToClipboardAfterExport', false),
+    copyMarkdownLink: pro && config.get<boolean>('copyMarkdownLinkAfterExport', false),
   };
 }
