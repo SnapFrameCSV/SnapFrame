@@ -46,15 +46,15 @@ If a run ever sees a secret value on screen, do not write it anywhere; note "sec
 | Job | Where | Cadence | What it does |
 |---|---|---|---|
 | Operate loop | Claude routine "Snapframe operate loop" (cloud, created in the app with the repo selected) | Daily 03:00 Sydney until 4 stable weeks, then weekly | Repo is pre-cloned; prompt points at `agent/ROUTINE-PROMPT.md`, which points at `agent/RUN.md` |
-| Marketplace metrics | GitHub Action `metrics.yml` | Daily | Queries the public extension-query API, commits `metrics/marketplace.json` (not created yet) |
-| CI | GitHub Action `ci.yml` | On push to `main` | Lint, tests, package |
-| Publish | GitHub Action `publish.yml` | On version tag | Publishes to both marketplaces (not created yet) |
+| Marketplace metrics | GitHub Action `metrics.yml` | Daily 02:17 Sydney | `scripts/marketplace-metrics.mjs` queries the public extension-query API and commits `metrics/marketplace.json` when it changed; keeps the previous snapshot on a fetch error; `found:false` before first publish |
+| CI | GitHub Action `ci.yml` | On push to `main` | Hygiene, extension (three OSes, golden suite, `.vsix` artifact), worker |
+| Publish | GitHub Action `publish.yml` | On tag `v*`, or `workflow_dispatch` with `dry_run` | Tests, checks tag = manifest version, packages, publishes to the VS Code Marketplace (`vsce publish --oidc` when repo variable `VSCE_TRUSTED_PUBLISHING=true`, else `VSCE_PAT`) and to Open VSX when `OVSX_PAT` exists; dry run packages and reports which credential path would be used |
 | Deploy Worker | GitHub Action `deploy-worker.yml` | On push to `main` touching `worker/` | Runs the Worker tests, then `wrangler deploy` — the deploy step is skipped (not failed) until `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` exist |
 
-## How to deploy / roll back (to be filled in when the jobs exist)
+## How to deploy / roll back
 
-- **Extension:** bump `version` in `extension/package.json`, tag `vX.Y.Z`, push tag → `publish.yml`. Roll back by publishing the previous version as a new patch (marketplaces do not support unpublishing a version cleanly).
-- **Worker:** push to `main` touching `worker/` → `deploy-worker.yml`. Roll back with `git revert` of the offending commit; Cloudflare also keeps previous deployments in the dashboard (operator can click "Rollback" if asked — that is a gate).
+- **Extension:** bump `version` in `extension/package.json` (and add the CHANGELOG entry), commit to `main`, wait for CI green, then `git tag vX.Y.Z && git push origin vX.Y.Z` → `publish.yml` (it refuses a tag that does not match the manifest version). Roll back by publishing the previous code as a new patch version (marketplaces do not support unpublishing a version cleanly). Rehearse with `workflow_dispatch` + `dry_run` (packages, checks credentials, publishes nothing).
+- **Worker:** push to `main` touching `worker/` → `deploy-worker.yml` (tests, then `wrangler deploy` once the Cloudflare secrets exist). Roll back with `git revert` of the offending commit; Cloudflare also keeps previous deployments in the dashboard (operator can click "Rollback" if asked — that is a gate).
 
 ## Network facts about the cloud sandbox (learned 2026-09-11)
 

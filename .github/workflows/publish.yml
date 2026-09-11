@@ -1,0 +1,92 @@
+name: Publish
+
+# Publishes the extension on a version tag (v0.1.0 → package.json version
+# 0.1.0), or packages only when dispatched with dry_run. Credentials, by
+# name: repository variable VSCE_TRUSTED_PUBLISHING=true selects
+# `vsce publish --oidc` (gate-03 trusted publishing); otherwise the VSCE_PAT
+# secret is used; OVSX_PAT (gate-06) adds Open VSX and is skipped when absent.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Package and check credentials only; publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Package and publish
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extension
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+      TRUSTED_PUBLISHING: ${{ vars.VSCE_TRUSTED_PUBLISHING == 'true' }}
+      HAS_VSCE_PAT: ${{ secrets.VSCE_PAT != '' }}
+      HAS_OVSX_PAT: ${{ secrets.OVSX_PAT != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Tag matches the manifest version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version"; exit 1
+          fi
+      - name: Package
+        run: npm run package
+      - name: Upload .vsix
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapframe-vsix
+          path: extension/*.vsix
+          if-no-files-found: error
+      - name: Credential check
+        run: |
+          echo "dry run: $DRY_RUN"
+          echo "VS Code Marketplace: trusted publishing=$TRUSTED_PUBLISHING, VSCE_PAT present=$HAS_VSCE_PAT"
+          echo "Open VSX: OVSX_PAT present=$HAS_OVSX_PAT"
+          if [ "$TRUSTED_PUBLISHING" != "true" ] && [ "$HAS_VSCE_PAT" != "true" ]; then
+            echo "::warning::No Marketplace credential configured (gate-03)."
+            if [ "$DRY_RUN" != "true" ]; then exit 1; fi
+          fi
+      - name: Publish to VS Code Marketplace (trusted publishing)
+        if: env.DRY_RUN != 'true' && env.TRUSTED_PUBLISHING == 'true'
+        run: npx vsce publish --oidc --packagePath ./*.vsix
+      - name: Publish to VS Code Marketplace (token)
+        if: env.DRY_RUN != 'true' && env.TRUSTED_PUBLISHING != 'true' && env.HAS_VSCE_PAT == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --packagePath ./*.vsix
+      - name: Publish to Open VSX
+        if: env.DRY_RUN != 'true' && env.HAS_OVSX_PAT == 'true'
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          publisher=$(node -p "require('./package.json').publisher")
+          npx --yes ovsx@0.10.6 create-namespace "$publisher" -p "$OVSX_PAT" || echo "namespace already exists"
+          npx --yes ovsx@0.10.6 publish ./*.vsix -p "$OVSX_PAT"
+      - name: Open VSX skipped
+        if: env.DRY_RUN != 'true' && env.HAS_OVSX_PAT != 'true'
+        run: echo "OVSX_PAT not set (gate-06) — Open VSX publish skipped."

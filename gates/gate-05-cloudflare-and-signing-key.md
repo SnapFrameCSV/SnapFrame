@@ -32,6 +32,8 @@ The next run writes the KV ID into `worker/wrangler.toml`, pushes, and the deplo
 
 > gate 05 part 2 — public key `<paste the 64 characters>`
 
+5. **Optional, 3 minutes — the dead-man's switch:** so you hear about an outage even if the scheduled runs stop, create a free uptime check: **https://betterstack.com/uptime** → sign up (email) → **Monitors** → **Create monitor** → URL `https://<worker>/health`, check every **3 minutes**, alert by **email** to you. Nothing else to configure. If it ever emails you, forward the first line to the next weekly report; the run redeploys the last green build.
+
 The public key is public by design — it is what the extension uses to check keys offline, and it will be committed to the repository in plain sight.
 
 ## What happens next

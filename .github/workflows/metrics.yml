@@ -1,0 +1,38 @@
+name: Marketplace metrics
+
+# Daily snapshot of the public Marketplace statistics into metrics/marketplace.json
+# (D11: the sandbox cannot reach marketplace.visualstudio.com, so an Action
+# fetches and commits; runs read the file). Skips quietly before first publish.
+
+on:
+  schedule:
+    - cron: "17 16 * * *" # 02:17 Sydney (AEST)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    name: Snapshot marketplace statistics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch statistics
+        run: |
+          publisher=$(node -p "require('./extension/package.json').publisher")
+          name=$(node -p "require('./extension/package.json').name")
+          node scripts/marketplace-metrics.mjs "$publisher.$name" metrics/marketplace.json
+      - name: Commit if changed
+        run: |
+          if git ls-files --error-unmatch metrics/marketplace.json >/dev/null 2>&1 && git diff --quiet -- metrics/marketplace.json; then
+            echo "No change."; exit 0
+          fi
+          git config user.name "SnapFrameCSV"
+          git config user.email "SnapFrameCSV@users.noreply.github.com"
+          git add metrics/marketplace.json
+          git commit -m "Update marketplace metrics snapshot"
+          git push
