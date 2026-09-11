@@ -1,19 +1,21 @@
 import * as vscode from 'vscode';
 import { runCapture, runQuickSnap } from './capture/panel';
-
-const COMING_SOON: Array<[string, string]> = [
-  ['snapframe.enterLicence', 'Enter Licence Key'],
-  ['snapframe.buyPro', 'Buy Pro'],
-];
+import { enterLicence, initialiseLicence } from './licence/activate';
 
 export function activate(context: vscode.ExtensionContext): void {
-  for (const [id, label] of COMING_SOON) {
-    context.subscriptions.push(
-      vscode.commands.registerCommand(id, () => {
-        void vscode.window.showInformationMessage(`Snapframe: ${label} is not available in this preview build yet.`);
-      }),
-    );
-  }
+  context.subscriptions.push(
+    vscode.commands.registerCommand('snapframe.buyPro', () => {
+      void vscode.window.showInformationMessage('Snapframe: Buy Pro is not available in this preview build yet.');
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('snapframe.enterLicence', () => {
+      void enterLicence(context).catch((error: unknown) => {
+        void vscode.window.showErrorMessage(`Snapframe: could not enter the licence key — ${String(error)}`);
+      });
+    }),
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('snapframe.capture', () => {
@@ -36,6 +38,9 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.executeCommand('workbench.action.openSettings', '@ext:snapframe.snapframe'),
     ),
   );
+
+  // Deliberately not awaited: reading SecretStorage must never delay activation.
+  void initialiseLicence(context).catch(() => undefined);
 }
 
 export function deactivate(): void {}

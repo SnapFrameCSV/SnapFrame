@@ -2,7 +2,7 @@
 
 Turn a code selection into a clean, shareable PNG in one keystroke. The image keeps your editor's real theme, font and ligatures, fixes indentation and wraps long lines — the two things people complain about most in the tools that came before.
 
-> **Preview build.** Version 0.0.1 has the free capture, preview and PNG export working; the licence and Pro commands tell you they are not available yet. Watch the [changelog](CHANGELOG.md).
+> **Preview build.** Version 0.0.1 has the free capture, preview and PNG export working and the licence-key command wired up; no keys can be issued yet and Buy Pro tells you it is not available. Watch the [changelog](CHANGELOG.md).
 
 ## How it works
 
