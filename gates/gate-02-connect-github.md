@@ -1,6 +1,6 @@
 # Gate 02 — Connect GitHub to Claude, and create the empty repository
 
-- [ ] **Cleared** (I tick this when you reply)
+- [x] **Cleared** — 2026-09-11, operator replied "gate 02 done — my GitHub username is SnapFrameCSV"
 
 **Time:** about 5–7 minutes · **What you'll reply with:** "gate 02 done" plus your GitHub username (not a secret)
 
