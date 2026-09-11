@@ -31,8 +31,11 @@ test('presets round-trip through the JSON file format', () => {
 });
 
 test('every preset-able key is a real snapframe setting name', () => {
-  // background.image is deliberately absent: it is a machine-local path.
+  // background.image (a machine-local path), highlightLines and callouts
+  // (per-snippet) are deliberately absent.
   const declared = [
+    'highlightColor',
+    'focusDim',
     'background.type',
     'background.color',
     'background.gradient',

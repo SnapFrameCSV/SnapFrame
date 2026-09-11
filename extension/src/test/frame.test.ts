@@ -78,7 +78,10 @@ test('gradientVector maps CSS angles onto edge-to-edge box coordinates', () => {
 });
 
 test('buildFrameSvg (Pro) spaces custom gradient stops evenly along the requested angle', () => {
-  const svg = buildFrameSvg(content, 'index.ts', { ...baseSettings, pro: { gradientAngle: 90, gradientStops: ['#000000', '#777777', '#ffffff'] } });
+  const svg = buildFrameSvg(content, 'index.ts', {
+    ...baseSettings,
+    pro: { ...DEFAULT_PRO_FRAME_OPTIONS, gradientAngle: 90, gradientStops: ['#000000', '#777777', '#ffffff'] },
+  });
   assert.match(svg, /x1="0" y1="0.5" x2="1" y2="0.5"/);
   assert.match(svg, /<stop offset="0%" stop-color="#000000"/);
   assert.match(svg, /<stop offset="50%" stop-color="#777777"/);
@@ -164,6 +167,38 @@ test('buildFrameSvg skips blank rows but keeps later rows on their own baseline'
   assert.match(svg, /y="96\.5"[^>]*><tspan>a<\/tspan>/);
   assert.doesNotMatch(svg, /y="121\.5"/);
   assert.match(svg, /y="146\.5"[^>]*><tspan>c<\/tspan>/);
+});
+
+const threeLines: FrameContent = { ...content, lines: [[{ text: 'a' }], [{ text: 'b' }], [{ text: 'c' }]], height: 75, lineCount: 3, startLine: 10 };
+
+test('buildFrameSvg (Pro) draws a highlight band across the card behind each highlighted row', () => {
+  const svg = buildFrameSvg(threeLines, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, highlightLines: [11, 99], highlightColor: '#ff000022' } });
+  // rows are 25px from a top of 84 (32 + 36 + 16); line 11 is row 1; the band spans the card (x=32, width=432)
+  assert.match(svg, /<rect x="32" y="109" width="432" height="25" fill="#ff000022" \/>/);
+  assert.equal((svg.match(/fill="#ff000022"/g) ?? []).length, 1, 'line 99 is outside the capture and ignored');
+  assert.doesNotMatch(svg, / opacity="0\.35"/, 'no dimming unless focusDim is on (flood-opacity is the shadow, not a row)');
+});
+
+test('buildFrameSvg (Pro) focus-dim fades every non-highlighted row, and does nothing without highlights', () => {
+  const svg = buildFrameSvg(threeLines, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, highlightLines: [11], focusDim: true } });
+  assert.match(svg, /y="96\.5"[^>]*opacity="0\.35"[^>]*><tspan>a<\/tspan>/);
+  assert.match(svg, /y="121\.5"[^>]*fill="#d4d4d4"><tspan>b<\/tspan>/, 'the highlighted row keeps full opacity');
+  assert.match(svg, /y="146\.5"[^>]*opacity="0\.35"[^>]*><tspan>c<\/tspan>/);
+  const noHighlights = buildFrameSvg(threeLines, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, focusDim: true } });
+  assert.doesNotMatch(noHighlights, / opacity="0\.35"/);
+});
+
+test('buildFrameSvg (Pro) pins a callout pill to the right edge of its row, escaped and truncated', () => {
+  const svg = buildFrameSvg(threeLines, 'index.ts', {
+    ...baseSettings,
+    pro: { ...DEFAULT_PRO_FRAME_OPTIONS, callouts: [{ line: 12, text: 'the <bug>' }, { line: 3, text: 'ignored' }, { line: 10, text: '   ' }] },
+  });
+  // "the <bug>" is 9 chars: width 9*6.5+16 = 74.5 -> 75; right edge is textX (48) + textWidth (400) = 448; row 2 centre 146.5
+  assert.match(svg, /<rect x="373" y="137\.5" width="75" height="18" rx="9" ry="9" fill="#ffbd2e" \/>/);
+  assert.match(svg, /<text x="410\.5" y="146\.5" text-anchor="middle"[^>]*>the &lt;bug&gt;<\/text>/);
+  assert.equal((svg.match(/class="sf-callout"/g) ?? []).length, 1, 'out-of-range and blank callouts are skipped');
+  const long = buildFrameSvg(threeLines, 'index.ts', { ...baseSettings, pro: { ...DEFAULT_PRO_FRAME_OPTIONS, callouts: [{ line: 10, text: 'x'.repeat(100) }] } });
+  assert.match(long, />x{40}<\/text>/);
 });
 
 test('buildFrameSvg omits the gutter and line numbers when lineNumbers is off', () => {

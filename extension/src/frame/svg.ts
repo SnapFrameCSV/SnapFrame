@@ -33,6 +33,12 @@ export interface FrameCaption {
   position: 'left' | 'center' | 'right';
 }
 
+export interface FrameCallout {
+  /** Absolute file line number, as shown in the gutter. */
+  line: number;
+  text: string;
+}
+
 export interface ProFrameOptions {
   /** Gradient direction in CSS degrees (0 = to top, 90 = to right); 135 is the free tier's fixed diagonal. */
   gradientAngle: number;
@@ -41,9 +47,23 @@ export interface ProFrameOptions {
   /** A data: URI drawn over the backdrop, covering the whole image. */
   backgroundImage?: string;
   caption?: FrameCaption;
+  /** Absolute file line numbers to highlight with a translucent band. */
+  highlightLines: number[];
+  highlightColor: string;
+  /** With highlights present, fade every other row. */
+  focusDim: boolean;
+  /** Small labels pinned to the right edge of a row. */
+  callouts: FrameCallout[];
 }
 
-export const DEFAULT_PRO_FRAME_OPTIONS: ProFrameOptions = { gradientAngle: 135, gradientStops: [] };
+export const DEFAULT_PRO_FRAME_OPTIONS: ProFrameOptions = {
+  gradientAngle: 135,
+  gradientStops: [],
+  highlightLines: [],
+  highlightColor: 'rgba(255,255,255,0.08)',
+  focusDim: false,
+  callouts: [],
+};
 
 /** One stretch of text with a single style, as VS Code's highlighter emits it. */
 export interface TextRun {
@@ -95,6 +115,12 @@ const LINE_NUMBER_RIGHT_INSET = 12;
 const LINE_NUMBER_COLOR = 'rgba(255,255,255,0.35)';
 const CAPTION_BAND_HEIGHT = 28;
 const CAPTION_FONT_SIZE = 13;
+const DIM_OPACITY = 0.35;
+const CALLOUT_FONT_SIZE = 11;
+const CALLOUT_CHAR_WIDTH = 6.5;
+const CALLOUT_PADDING_X = 8;
+const CALLOUT_HEIGHT = 18;
+const CALLOUT_MAX_CHARS = 40;
 
 export function buildFrameSvg(content: FrameContent, fileName: string, settings: FrameSettings): string {
   const titleBarHeight = settings.titleBar ? TITLE_BAR_HEIGHT : 0;
@@ -166,10 +192,59 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
   </clipPath>
   <g clip-path="url(#sf-card-clip)">
     ${titleBarMarkup}
+    ${buildHighlights(content, lineCount, rowHeight, pro, padding, textTop, cardWidth)}
     ${lineNumbersMarkup}
-    ${buildCodeText(content, lineCount, rowHeight, textX, textTop)}
+    ${buildCodeText(content, lineCount, rowHeight, textX, textTop, dimmedRows(content, lineCount, pro))}
+    ${buildCallouts(content, lineCount, rowHeight, pro, textX + textWidth, textTop)}
   </g>
 </svg>`;
+}
+
+/** Rows to fade: every row without a highlight, but only when focus-dim is on and there is at least one highlight. */
+function dimmedRows(content: FrameContent, lineCount: number, pro: ProFrameOptions): Set<number> {
+  const dimmed = new Set<number>();
+  if (!pro.focusDim || pro.highlightLines.length === 0) {
+    return dimmed;
+  }
+  const highlighted = new Set(pro.highlightLines);
+  for (let i = 0; i < lineCount; i++) {
+    if (!highlighted.has(content.startLine + i)) {
+      dimmed.add(i);
+    }
+  }
+  return dimmed;
+}
+
+function buildHighlights(content: FrameContent, lineCount: number, rowHeight: number, pro: ProFrameOptions, x: number, top: number, width: number): string {
+  const rows: string[] = [];
+  for (const line of pro.highlightLines) {
+    const index = line - content.startLine;
+    if (index < 0 || index >= lineCount) {
+      continue;
+    }
+    rows.push(`<rect x="${x}" y="${top + rowHeight * index}" width="${width}" height="${rowHeight}" fill="${escapeAttr(pro.highlightColor)}" />`);
+  }
+  return rows.join('\n    ');
+}
+
+/** A label pill at the right edge of the code area, vertically centred on its row. */
+function buildCallouts(content: FrameContent, lineCount: number, rowHeight: number, pro: ProFrameOptions, rightEdge: number, top: number): string {
+  const rows: string[] = [];
+  for (const callout of pro.callouts) {
+    const index = callout.line - content.startLine;
+    const text = callout.text.trim().slice(0, CALLOUT_MAX_CHARS);
+    if (index < 0 || index >= lineCount || !text) {
+      continue;
+    }
+    const width = Math.round(text.length * CALLOUT_CHAR_WIDTH + CALLOUT_PADDING_X * 2);
+    const x = rightEdge - width;
+    const centreY = top + rowHeight * index + rowHeight / 2;
+    rows.push(
+      `<g class="sf-callout"><rect x="${x}" y="${centreY - CALLOUT_HEIGHT / 2}" width="${width}" height="${CALLOUT_HEIGHT}" rx="9" ry="9" fill="#ffbd2e" />` +
+        `<text x="${x + width / 2}" y="${centreY}" text-anchor="middle" dominant-baseline="central" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="${CALLOUT_FONT_SIZE}" font-weight="600" fill="#1e1e1e">${escapeXml(text)}</text></g>`,
+    );
+  }
+  return rows.join('\n    ');
 }
 
 /**
@@ -178,7 +253,7 @@ export function buildFrameSvg(content: FrameContent, fileName: string, settings:
  * spans would. No whitespace may appear between the tags: with
  * xml:space="preserve" it would render as extra spaces.
  */
-function buildCodeText(content: FrameContent, lineCount: number, rowHeight: number, x: number, top: number): string {
+function buildCodeText(content: FrameContent, lineCount: number, rowHeight: number, x: number, top: number, dimmed: Set<number>): string {
   const rows: string[] = [];
   const family = escapeAttr(content.fontFamily);
   for (let i = 0; i < lineCount; i++) {
@@ -187,6 +262,7 @@ function buildCodeText(content: FrameContent, lineCount: number, rowHeight: numb
       continue;
     }
     const y = top + rowHeight * i + rowHeight / 2;
+    const dim = dimmed.has(i) ? ` opacity="${DIM_OPACITY}"` : '';
     const spans = runs
       .map((run) => {
         const attrs = [
@@ -198,7 +274,7 @@ function buildCodeText(content: FrameContent, lineCount: number, rowHeight: numb
       })
       .join('');
     rows.push(
-      `<text x="${x}" y="${y}" xml:space="preserve" dominant-baseline="central" font-family="${family}" font-size="${content.fontSize}" fill="${escapeAttr(content.color)}">${spans}</text>`,
+      `<text x="${x}" y="${y}" xml:space="preserve" dominant-baseline="central" font-family="${family}" font-size="${content.fontSize}" fill="${escapeAttr(content.color)}"${dim}>${spans}</text>`,
     );
   }
   return rows.join('\n    ');

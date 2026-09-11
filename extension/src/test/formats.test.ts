@@ -15,14 +15,22 @@ import { DEFAULT_PRO_FRAME_OPTIONS } from '../frame/svg';
 
 test('Pro frame extras (gradient angle/stops, background image, caption) collapse to the free defaults without a key', () => {
   const requested = {
+    ...DEFAULT_PRO_FRAME_OPTIONS,
     gradientAngle: 20,
     gradientStops: ['#000', '#111', '#222'],
     backgroundImage: 'data:image/png;base64,AAAA',
     caption: { text: '@me', color: '#fff', position: 'right' as const },
+    highlightLines: [3],
+    focusDim: true,
+    callouts: [{ line: 3, text: 'here' }],
   };
   assert.deepEqual(allowedProFrameOptions(requested, false, DEFAULT_PRO_FRAME_OPTIONS), DEFAULT_PRO_FRAME_OPTIONS);
   assert.deepEqual(allowedProFrameOptions(requested, true, DEFAULT_PRO_FRAME_OPTIONS), requested);
-  assert.deepEqual(DEFAULT_PRO_FRAME_OPTIONS, { gradientAngle: 135, gradientStops: [] }, 'the free defaults are the diagonal two-stop gradient and nothing else');
+  assert.deepEqual(
+    DEFAULT_PRO_FRAME_OPTIONS,
+    { gradientAngle: 135, gradientStops: [], highlightLines: [], highlightColor: 'rgba(255,255,255,0.08)', focusDim: false, callouts: [] },
+    'the free defaults are the diagonal two-stop gradient and nothing else',
+  );
 });
 
 // D05: the free tier must keep everything Slice 2 shipped. These assertions

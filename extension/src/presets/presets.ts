@@ -19,6 +19,8 @@ const PRESET_SETTING_VALIDATORS: Record<string, (value: unknown) => boolean> = {
   'caption.text': (v) => typeof v === 'string' && v.length <= 80 && !/[\r\n]/.test(v),
   'caption.color': isCssColour,
   'caption.position': (v) => v === 'left' || v === 'center' || v === 'right',
+  highlightColor: isCssColour,
+  focusDim: isBoolean,
   padding: (v) => isNumberIn(v, 0, 256),
   shadow: isBoolean,
   cornerRadius: (v) => isNumberIn(v, 0, 64),

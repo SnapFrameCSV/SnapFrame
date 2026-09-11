@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { DEFAULT_PRO_FRAME_OPTIONS, FrameSettings, type ProFrameOptions } from './svg';
+import { DEFAULT_PRO_FRAME_OPTIONS, FrameSettings, type FrameCallout, type ProFrameOptions } from './svg';
+import { parseLineRanges } from './ranges';
 import { allowedBackgroundType, allowedProFrameOptions, allowedScale, type ExportScale } from '../export/formats';
 import { isPro } from '../licence/verify';
 
@@ -32,6 +33,10 @@ export async function readProFrameOptions(): Promise<ProFrameOptions> {
           position: config.get<'left' | 'center' | 'right'>('caption.position', 'right'),
         }
       : undefined,
+    highlightLines: parseLineRanges(config.get<string>('highlightLines', '')),
+    highlightColor: config.get<string>('highlightColor', DEFAULT_PRO_FRAME_OPTIONS.highlightColor),
+    focusDim: config.get<boolean>('focusDim', false),
+    callouts: readCallouts(config.get<unknown>('callouts', [])),
   };
   const pro = isPro();
   const imagePath = config.get<string>('background.image', '').trim();
@@ -39,6 +44,15 @@ export async function readProFrameOptions(): Promise<ProFrameOptions> {
     requested.backgroundImage = await loadBackgroundImage(imagePath);
   }
   return allowedProFrameOptions(requested, pro, DEFAULT_PRO_FRAME_OPTIONS);
+}
+
+function readCallouts(value: unknown): FrameCallout[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((c): c is { line: number; text: string } => typeof c === 'object' && c !== null && Number.isInteger((c as { line?: unknown }).line) && typeof (c as { text?: unknown }).text === 'string')
+    .map((c) => ({ line: c.line, text: c.text }));
 }
 
 async function loadBackgroundImage(imagePath: string): Promise<string | undefined> {

@@ -205,6 +205,43 @@
           "default": "right",
           "description": "Where the caption sits under the frame. Pro."
         },
+        "snapframe.highlightLines": {
+          "type": "string",
+          "default": "",
+          "description": "File line numbers to highlight, as shown in the gutter — for example \"12-14, 20\". Empty for none. Pro."
+        },
+        "snapframe.highlightColor": {
+          "type": "string",
+          "default": "rgba(255,255,255,0.08)",
+          "description": "Colour of the highlight band behind highlighted lines. Pro."
+        },
+        "snapframe.focusDim": {
+          "type": "boolean",
+          "default": false,
+          "description": "When lines are highlighted, fade every other line. Pro."
+        },
+        "snapframe.callouts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "integer",
+                "description": "File line number, as shown in the gutter."
+              },
+              "text": {
+                "type": "string",
+                "description": "Short label (up to 40 characters)."
+              }
+            },
+            "required": [
+              "line",
+              "text"
+            ]
+          },
+          "default": [],
+          "description": "Small labels pinned to the right edge of a line, for example [{ \"line\": 12, \"text\": \"the bug\" }]. Pro."
+        },
         "snapframe.padding": {
           "type": "number",
           "minimum": 0,

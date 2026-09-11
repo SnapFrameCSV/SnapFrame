@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { renderShell } from '../webview/shell';
-import { buildFrameSvg, type FrameContent, type FrameSettings, type TextRun } from '../frame/svg';
+import { DEFAULT_PRO_FRAME_OPTIONS, buildFrameSvg, type FrameContent, type FrameSettings, type TextRun } from '../frame/svg';
 import { buildPdf, splitRgba } from '../export/pdf';
 
 /**
@@ -197,7 +197,7 @@ const TEST_FRAME_SETTINGS: FrameSettings = {
   windowControls: true,
   titleBar: true,
   lineNumbers: true,
-  pro: { gradientAngle: 135, gradientStops: [] },
+  pro: DEFAULT_PRO_FRAME_OPTIONS,
 };
 
 // A 1x1 opaque blue PNG.
@@ -413,7 +413,7 @@ test('webview shell: a Pro background image (data URI) and caption still export 
     const measured = await render(page, null, 'brand();', 'b.ts', 1);
     const svg = buildFrameSvg(toContent(measured, 1), 'b.ts', {
       ...TEST_FRAME_SETTINGS,
-      pro: { gradientAngle: 135, gradientStops: [], backgroundImage: BLUE_PIXEL_PNG, caption: { text: '@snapframe', color: '#ffffff', position: 'right' } },
+      pro: { ...DEFAULT_PRO_FRAME_OPTIONS, backgroundImage: BLUE_PIXEL_PNG, caption: { text: '@snapframe', color: '#ffffff', position: 'right' } },
     });
     const dims = svgDims(svg);
     await sendSvg(page, svg, 1, false, true);

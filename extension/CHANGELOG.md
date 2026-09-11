@@ -14,3 +14,4 @@ All notable changes to Snapframe are listed here. The format follows [Keep a Cha
 - Pro: **Export WebP** and **Export PDF** (lossless, one page sized to the frame), a **transparent** background type, and **3×/4×** export scale. Without a key these settings fall back to their free equivalents; nothing free changes.
 - Pro: **Presets** — save the current frame settings under a name, apply or delete them from a quick pick, and export/import them as a JSON file to share.
 - Pro: **Custom gradients** (any angle, up to 8 colour stops), a **background image** behind the frame, and a **caption or handle** under it in your brand colour.
+- Pro: **Line highlighting** (`snapframe.highlightLines`, e.g. `"12-14, 20"`), **focus-dim** to fade the other lines, and **callouts** — short labels pinned to a line.
