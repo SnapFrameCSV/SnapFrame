@@ -1,0 +1,19 @@
+# DECISIONS
+
+Every non-obvious choice, with the reason, so a future run does not relitigate it. Add to the bottom; never delete — strike through and add a superseding entry instead.
+
+| # | Date | Decision | Why | Revisit when |
+|---|---|---|---|---|
+| D01 | 2026-09-11 | Model: developer-tool extension with a paid tier (Gate 0 choice A) | Only candidate that is $0, within every platform's terms, and has built-in marketplace search for discovery. See `docs/01-assessment.md`. | Never for this stream — one stream until self-sustaining or killed |
+| D02 | 2026-09-11 | Product: code-screenshot extension "Snapframe — Code Screenshot" | ~7M lifetime installs on a shelf where every leader is abandoned with fixable, documented defects; zero privacy exposure; small build. See `docs/02-design.md` §1. | Metric thresholds in design §8 |
+| D03 | 2026-09-11 | Payment rail: Stripe Managed Payments (Payment Link, one-time, `txcd_10202000`); fallback Polar.sh | Stripe is merchant of record, AU GA since Apr 2026, free AUD payouts, no domain needed. | If Stripe's eligibility review declines an individual account |
+| D04 | 2026-09-11 | Price: US$9 one-off, no subscription, Adaptive Pricing on | Convenience tool priced as an impulse; subscriptions triple support surface. | Design §7 item 2 (price test after 90 days if installs ≥1,000 and sales <5) |
+| D05 | 2026-09-11 | Pro is strictly additive; free tier has no ads, watermark, nag or account | Every documented backlash against paid VS Code extensions came from taking something away. | Never |
+| D06 | 2026-09-11 | Licence keys: Ed25519-signed, verified offline in the extension, issued by a Cloudflare Worker; no phone-home, no revocation enforcement | Robustness over leak-proofing at US$9; product survives loss of Worker, scheduler or operator. | Never at this price |
+| D07 | 2026-09-11 | Hosting: Cloudflare Workers + KV only. Vercel Hobby and GitHub Pages are disqualified (non-commercial terms); Supabase pauses | Verified terms, see `docs/01-research-notes.md` Report B. | If Cloudflare changes Free terms |
+| D08 | 2026-09-11 | Public repository, PolyForm Noncommercial 1.0.0 licence | Free Issues as the inbound channel, unlimited Actions minutes, Open VSX requires a licence expression. The Pro gate is readable in source; accepted. | Never |
+| D09 | 2026-09-11 | Agent GitHub access via Claude's GitHub App authorisation (proxy-injected credentials), not a token | Constraint 6: no secrets in chat, none held by the agent. Confirmed: the cloud sandbox returns "No linked GitHub account. Connect your GitHub account and retry." until linked. | — |
+| D10 | 2026-09-11 | Operator's email is redacted from the public repo copy of the master prompt | Public repo. The Stripe support email is a separate, deliberate disclosure at gate-04. | — |
+| D11 | 2026-09-11 | Metrics reach the agent without secrets: a daily GitHub Action commits marketplace stats to `metrics/`; the Worker exposes an aggregate `/stats` endpoint (counts only, no personal data) | The Claude cloud sandbox cannot reach marketplace.visualstudio.com (403), and the agent must not hold a Stripe key. | If Action minutes or the query API change |
+| D12 | 2026-09-11 | Scheduled runs push directly to `main` (small, tested, one deploy max) rather than opening PRs | There is no human reviewer by design; a PR queue nobody merges is a dead loop. CI on `main` blocks publish on red. | If a second maintainer ever appears |
+| D13 | 2026-09-11 | The operate loop is a routine created in the Claude app with the repository selected; the interactive Cowork chat is only the gate/approval channel and never pushes code | Sessions and routines started from the chat are not bound to any repository (403 "not enabled for this session"); repository binding is a property of routines created with a repo selected. | If the platform adds repository binding to chat-created routines |
