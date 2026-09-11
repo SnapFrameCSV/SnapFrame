@@ -22,8 +22,8 @@ The full constraints are in `docs/00-master-prompt.md` §2 and §8. The short ve
 | Human actions | `gates/gate-NN-*.md` | One at a time. Tick the checkbox in the file when the operator says "gate NN done" |
 | Weekly reports | `reports/YYYY-WW.md` | Under 200 words; ends with keep / watch / pivot / kill |
 | Run log | `LOG.md` | Append one line per run |
-| Extension | `extension/` | (not created yet) |
-| Licence Worker | `worker/` | (not created yet) |
+| Extension | `extension/` | TypeScript, esbuild bundle, `node:test` + Playwright golden suite; CI on three OSes |
+| Licence Worker | `worker/` | TypeScript, zero dependencies, `node:test` with injected KV/fetch/clock; deployed by `deploy-worker.yml` once gate-05 secrets exist (`worker/README.md` has the routes and KV layout) |
 | Metrics snapshots | `metrics/` | (not created yet) written by a GitHub Action, read by runs |
 
 ## Secrets, by name only (never values)
@@ -49,7 +49,7 @@ If a run ever sees a secret value on screen, do not write it anywhere; note "sec
 | Marketplace metrics | GitHub Action `metrics.yml` | Daily | Queries the public extension-query API, commits `metrics/marketplace.json` (not created yet) |
 | CI | GitHub Action `ci.yml` | On push to `main` | Lint, tests, package |
 | Publish | GitHub Action `publish.yml` | On version tag | Publishes to both marketplaces (not created yet) |
-| Deploy Worker | GitHub Action `deploy-worker.yml` | On push touching `worker/` | `wrangler deploy` (not created yet) |
+| Deploy Worker | GitHub Action `deploy-worker.yml` | On push to `main` touching `worker/` | Runs the Worker tests, then `wrangler deploy` — the deploy step is skipped (not failed) until `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` exist |
 
 ## How to deploy / roll back (to be filled in when the jobs exist)
 

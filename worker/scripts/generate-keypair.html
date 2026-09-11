@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snapframe — generate the licence signing key pair</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 44rem; margin: 3rem auto; padding: 0 1.25rem; color: #1e1e2e; line-height: 1.5; }
+  textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem; padding: 0.6rem; }
+  button { font: inherit; padding: 0.5rem 1rem; }
+  .step { border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.25rem; margin: 1.25rem 0; }
+  .warn { background: #fff7e0; border-color: #f0c36d; }
+</style>
+</head>
+<body>
+<h1>Generate the Snapframe licence signing key pair</h1>
+<p>This page runs entirely in your browser (open it from disk — it makes no network requests and stores nothing). It creates an Ed25519 key pair once. You will paste each half into exactly one place; nothing else ever needs them.</p>
+<button id="go">Generate key pair</button>
+
+<div class="step warn" id="private" hidden>
+  <h2>1 · Private key → Cloudflare Worker secret <code>LICENCE_SIGNING_KEY</code></h2>
+  <p>Cloudflare dashboard → Workers &amp; Pages → <strong>snapframe-licence</strong> → Settings → Variables and Secrets → Add → type <em>Secret</em>, name <code>LICENCE_SIGNING_KEY</code>, value:</p>
+  <textarea id="pkcs8" rows="3" readonly></textarea>
+  <p><strong>Do not paste this anywhere else</strong> — not into chat, not into GitHub. Once it is saved in Cloudflare you can close this page; if you lose it, generate a new pair and re-do step 2 (already-issued keys keep working).</p>
+</div>
+
+<div class="step" id="public" hidden>
+  <h2>2 · Public key → reply to the run</h2>
+  <p>This half is public by design. Reply to the gate with it, and it will be committed to <code>extension/src/licence/publicKey.ts</code>:</p>
+  <textarea id="raw" rows="2" readonly></textarea>
+</div>
+
+<script>
+  document.getElementById('go').addEventListener('click', async () => {
+    const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', pair.privateKey));
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+    document.getElementById('pkcs8').value = btoa(String.fromCharCode(...pkcs8));
+    document.getElementById('raw').value = [...raw].map((b) => b.toString(16).padStart(2, '0')).join('');
+    document.getElementById('private').hidden = false;
+    document.getElementById('public').hidden = false;
+    document.getElementById('go').disabled = true;
+  });
+</script>
+</body>
+</html>

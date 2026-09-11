@@ -6,3 +6,5 @@ out/
 extension/LICENSE
 *.log
 .DS_Store
+worker/node_modules/
+worker/out/
