@@ -4,6 +4,8 @@ import { resolveCaptureSource } from './source';
 import { buildFrameSvg, type TextRun } from '../frame/svg';
 import { readFrameSettings, readExportSettings } from '../frame/settings';
 import { buildExportFileName } from '../export/filename';
+import { FORMAT_LABELS, isFormatAllowed, type ExportFormat } from '../export/formats';
+import { isPro } from '../licence/verify';
 import { renderShell } from '../webview/shell';
 
 interface LastCapture {
@@ -31,6 +33,8 @@ interface Session {
   quick: boolean;
   capture?: LastCapture;
   returnTo?: ReturnTarget;
+  /** The last frame SVG built for this session, for vector export. */
+  svg?: string;
 }
 
 let previewSession: Session | undefined;
@@ -141,24 +145,31 @@ interface PanelMessage {
   message?: string;
 }
 
+interface ClipboardOutcome {
+  attempted: boolean;
+  ok: boolean;
+}
+
 /**
- * Saves the PNG bytes the webview rasterised. Writes straight to
+ * Saves exported bytes in the given format. Writes straight to
  * `snapframe.exportFolder` when it is set; otherwise asks via `showSaveDialog`
- * (BUILD.md: "leave empty to be asked each time"). The webview already tried
- * the clipboard copy (it needs `navigator.clipboard`, which the extension
- * host does not have) — this only reports the combined outcome.
+ * (BUILD.md: "leave empty to be asked each time"). For rasters the webview
+ * already tried the clipboard copy (it needs `navigator.clipboard`, which the
+ * extension host does not have) — this only reports the combined outcome.
+ * Pro-only formats are refused here too, so a stray message can't bypass the
+ * webview's gating.
  */
-async function exportPng(
-  capture: LastCapture,
-  bytesBase64: string,
-  clipboardAttempted: boolean,
-  clipboardOk: boolean,
-): Promise<void> {
-  if (!bytesBase64) {
+async function saveExport(capture: LastCapture, bytes: Uint8Array, format: ExportFormat, clipboard: ClipboardOutcome): Promise<void> {
+  if (bytes.length === 0) {
+    return;
+  }
+  const label = FORMAT_LABELS[format];
+  if (!isFormatAllowed(format, isPro())) {
+    void vscode.window.showInformationMessage(`Snapframe: ${label} export is a Pro feature. Run "Snapframe: Buy Pro…" to unlock it.`);
     return;
   }
   const { exportFolder } = readExportSettings();
-  const fileName = buildExportFileName(capture.fileName, capture.startLine);
+  const fileName = buildExportFileName(capture.fileName, capture.startLine, format);
 
   let targetUri: vscode.Uri;
   if (exportFolder) {
@@ -166,7 +177,7 @@ async function exportPng(
   } else {
     const chosen = await vscode.window.showSaveDialog({
       defaultUri: vscode.Uri.file(fileName),
-      filters: { Images: ['png'] },
+      filters: { [label]: [format] },
     });
     if (!chosen) {
       vscode.window.setStatusBarMessage('Snapframe: export cancelled.', 4000);
@@ -176,20 +187,25 @@ async function exportPng(
   }
 
   try {
-    await vscode.workspace.fs.writeFile(targetUri, Buffer.from(bytesBase64, 'base64'));
+    await vscode.workspace.fs.writeFile(targetUri, bytes);
   } catch (error) {
-    void vscode.window.showErrorMessage(`Snapframe: could not save the PNG — ${String(error)}`);
+    void vscode.window.showErrorMessage(`Snapframe: could not save the ${label} — ${String(error)}`);
     return;
   }
 
   const savedMessage = `Snapframe: saved ${targetUri.fsPath}`;
-  if (clipboardAttempted && clipboardOk) {
+  if (clipboard.attempted && clipboard.ok) {
     vscode.window.setStatusBarMessage(`${savedMessage} and copied to clipboard.`, 6000);
-  } else if (clipboardAttempted && !clipboardOk) {
+  } else if (clipboard.attempted && !clipboard.ok) {
     vscode.window.setStatusBarMessage(`${savedMessage} — clipboard copy wasn't supported here, saved the file instead.`, 6000);
   } else {
     vscode.window.setStatusBarMessage(savedMessage, 6000);
   }
+}
+
+/** A standalone SVG file: the frame as built, with an XML declaration so any viewer opens it. */
+function svgFileBytes(svg: string): Uint8Array {
+  return Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>\n${svg}\n`, 'utf8');
 }
 
 function sendRender(session: Session): void {
@@ -254,6 +270,7 @@ async function handleMessage(session: Session, message: PanelMessage): Promise<v
       message.fileName ?? '',
       readFrameSettings(),
     );
+    session.svg = svg;
     const { scale, copyToClipboardAfterExport } = readExportSettings();
     void session.panel.webview.postMessage({
       type: 'svg',
@@ -261,6 +278,7 @@ async function handleMessage(session: Session, message: PanelMessage): Promise<v
       scale,
       copyToClipboardAfterExport,
       autoExport: session.quick,
+      pro: isPro(),
     });
     return;
   }
@@ -275,10 +293,21 @@ async function handleMessage(session: Session, message: PanelMessage): Promise<v
       // for as short a time as possible; the bytes are already in hand.
       session.panel.dispose();
     }
-    await exportPng(capture, message.bytes ?? '', message.clipboardAttempted ?? false, message.clipboardOk ?? false);
+    await saveExport(capture, Buffer.from(message.bytes ?? '', 'base64'), 'png', {
+      attempted: message.clipboardAttempted ?? false,
+      ok: message.clipboardOk ?? false,
+    });
     if (session.quick) {
       await returnToEditor(session);
     }
+    return;
+  }
+
+  if (message.type === 'export-svg') {
+    if (!session.capture || !session.svg) {
+      return;
+    }
+    await saveExport(session.capture, svgFileBytes(session.svg), 'svg', { attempted: false, ok: false });
     return;
   }
 

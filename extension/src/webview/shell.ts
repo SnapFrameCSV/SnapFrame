@@ -41,23 +41,24 @@ export function renderShell(cspSource: string, quick: boolean): string {
     #preview { padding: 16px; overflow: auto; }
     #preview svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
     #toolbar { padding: 0 12px 8px; }
-    #export-btn {
+    #toolbar button {
       display: none;
       font-family: inherit;
       font-size: 12px;
       padding: 4px 10px;
+      margin-right: 6px;
       background: var(--vscode-button-background, #0e639c);
       color: var(--vscode-button-foreground, #fff);
       border: none;
       border-radius: 3px;
       cursor: pointer;
     }
-    #export-btn:disabled { opacity: 0.6; cursor: default; }
+    #toolbar button:disabled { opacity: 0.6; cursor: default; }
   </style>
 </head>
 <body>
   <div id="status">${quick ? 'Snapframe — quick snap…' : 'Snapframe — capturing…'}</div>
-  <div id="toolbar"${quick ? ' hidden' : ''}><button id="export-btn">Export PNG</button></div>
+  <div id="toolbar"${quick ? ' hidden' : ''}><button id="export-btn">Export PNG</button><button id="export-svg-btn">Export SVG</button></div>
   <div id="paste-target" contenteditable="true"></div>
   <div id="measure"></div>
   <div id="preview"></div>
@@ -69,12 +70,14 @@ export function renderShell(cspSource: string, quick: boolean): string {
     const preview = document.getElementById('preview');
     const status = document.getElementById('status');
     const exportBtn = document.getElementById('export-btn');
+    const exportSvgBtn = document.getElementById('export-svg-btn');
 
     let lastFileName = '';
     let lastSvgText = null;
     let lastDims = null;
     let lastScale = 2;
     let lastCopyToClipboard = false;
+    let lastPro = false;
 
     pasteTarget.addEventListener('paste', (event) => {
       event.preventDefault();
@@ -98,9 +101,11 @@ export function renderShell(cspSource: string, quick: boolean): string {
         lastSvgText = message.svg;
         lastScale = message.scale || 2;
         lastCopyToClipboard = !!message.copyToClipboardAfterExport;
+        lastPro = !!message.pro;
         const dims = message.svg.match(/<svg[^>]*\\swidth="(\\d+)"[^>]*\\sheight="(\\d+)"/);
         lastDims = dims ? { width: Number(dims[1]), height: Number(dims[2]) } : null;
         exportBtn.style.display = lastDims && !quick ? 'inline-block' : 'none';
+        exportSvgBtn.style.display = lastDims && !quick && lastPro ? 'inline-block' : 'none';
         if (message.autoExport) {
           if (lastDims) {
             void exportPng();
@@ -112,6 +117,8 @@ export function renderShell(cspSource: string, quick: boolean): string {
     });
 
     exportBtn.addEventListener('click', () => { void exportPng(); });
+    // The host already holds the SVG it built; it only needs to be told to save it.
+    exportSvgBtn.addEventListener('click', () => { vscode.postMessage({ type: 'export-svg' }); });
 
     async function exportPng() {
       if (!lastSvgText || !lastDims) {
@@ -182,6 +189,7 @@ export function renderShell(cspSource: string, quick: boolean): string {
       status.textContent = 'Snapframe — ' + fileName;
       lastFileName = fileName;
       exportBtn.style.display = 'none';
+      exportSvgBtn.style.display = 'none';
       measure.innerHTML = '';
       if (html) {
         measure.innerHTML = html;

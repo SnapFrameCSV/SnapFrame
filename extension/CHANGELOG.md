@@ -10,3 +10,4 @@ All notable changes to Snapframe are listed here. The format follows [Keep a Cha
 - **Quick Snap**: capture and export with your current settings in one keystroke, no preview.
 - **Enter Licence Key**: paste a Pro key; it is verified offline on your machine (Ed25519 signature, no network) and kept in VS Code's secret storage; a "Snapframe Pro" status-bar item shows while a key is active. Keys cannot be activated until the release build carries the public key.
 - Buy Pro still reports that it is not available in this preview build.
+- Pro: **Export SVG** from the preview — the frame as a standalone vector file.

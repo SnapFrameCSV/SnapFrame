@@ -110,13 +110,20 @@ function toContent(measured: Measured, startLine: number): FrameContent {
   };
 }
 
-async function sendSvg(page: Page, svg: string, scale: number, autoExport: boolean): Promise<void> {
+async function sendSvg(page: Page, svg: string, scale: number, autoExport: boolean, pro = false): Promise<void> {
   await page.evaluate(
     (args) => {
-      window.postMessage({ type: 'svg', svg: args.svg, scale: args.scale, copyToClipboardAfterExport: false, autoExport: args.autoExport }, '*');
+      window.postMessage(
+        { type: 'svg', svg: args.svg, scale: args.scale, copyToClipboardAfterExport: false, autoExport: args.autoExport, pro: args.pro },
+        '*',
+      );
     },
-    { svg, scale, autoExport },
+    { svg, scale, autoExport, pro },
   );
+}
+
+function buttonDisplay(page: Page, id: string): Promise<string | undefined> {
+  return page.evaluate((buttonId) => document.getElementById(buttonId)?.style.display, id);
 }
 
 async function exportedPng(page: Page): Promise<Buffer> {
@@ -302,6 +309,30 @@ test('webview shell: quick snap auto-exports on the svg message without ever sho
     assert.deepEqual(pngSize(png), svgDims(svg));
     const buttonDisplay = await page.evaluate(() => document.getElementById('export-btn')?.style.display);
     assert.equal(buttonDisplay, 'none');
+
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('webview shell: the Export SVG button appears only for Pro and asks the host to save', async () => {
+  const browser = await chromium.launch(launchOptions());
+  try {
+    const page = await loadShell(browser, false);
+    const measured = await render(page, null, 'vector();', 'v.ts', 1);
+    const svg = buildFrameSvg(toContent(measured, 1), 'v.ts', TEST_FRAME_SETTINGS);
+
+    await sendSvg(page, svg, 1, false, false);
+    await page.waitForFunction(() => document.getElementById('export-btn')?.style.display === 'inline-block');
+    assert.equal(await buttonDisplay(page, 'export-svg-btn'), 'none', 'free tier: PNG only, no SVG button');
+
+    await sendSvg(page, svg, 1, false, true);
+    await page.waitForFunction(() => document.getElementById('export-svg-btn')?.style.display === 'inline-block');
+    assert.equal(await buttonDisplay(page, 'export-btn'), 'inline-block', 'Pro keeps the free PNG button too');
+
+    await page.click('#export-svg-btn');
+    await waitForMessageType(page, 'export-svg');
 
     await page.close();
   } finally {

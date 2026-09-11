@@ -17,3 +17,8 @@ test('buildExportFileName sanitises characters unsafe in a file name', () => {
 test('buildExportFileName only strips the final extension', () => {
   assert.equal(buildExportFileName('archive.tar.gz', 7), 'snapframe-archive.tar-7.png');
 });
+
+test('buildExportFileName takes the export format as the extension', () => {
+  assert.equal(buildExportFileName('panel.ts', 42, 'svg'), 'snapframe-panel-42.svg');
+  assert.equal(buildExportFileName('panel.ts', 42, 'webp'), 'snapframe-panel-42.webp');
+});
