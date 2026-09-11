@@ -15,3 +15,19 @@ export function readFrameSettings(): FrameSettings {
     titleBar: config.get<boolean>('titleBar', true),
   };
 }
+
+export interface ExportSettings {
+  scale: 1 | 2;
+  exportFolder: string;
+  copyToClipboardAfterExport: boolean;
+}
+
+/** Reads the PNG-export settings. Not pure (reads vscode config), so left untested like readFrameSettings. */
+export function readExportSettings(): ExportSettings {
+  const config = vscode.workspace.getConfiguration('snapframe');
+  return {
+    scale: config.get<1 | 2>('scale', 2),
+    exportFolder: config.get<string>('exportFolder', ''),
+    copyToClipboardAfterExport: config.get<boolean>('copyToClipboardAfterExport', false),
+  };
+}

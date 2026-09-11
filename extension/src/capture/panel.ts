@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
+import * as path from 'node:path';
 import { resolveCaptureSource } from './source';
 import { buildFrameSvg } from '../frame/svg';
-import { readFrameSettings } from '../frame/settings';
+import { readFrameSettings, readExportSettings } from '../frame/settings';
+import { buildExportFileName } from '../export/filename';
 
 let activePanel: vscode.WebviewPanel | undefined;
 let configListener: vscode.Disposable | undefined;
@@ -10,6 +12,7 @@ interface LastCapture {
   html: string | null;
   fallbackText: string;
   fileName: string;
+  startLine: number;
 }
 
 let lastCapture: LastCapture | undefined;
@@ -18,7 +21,7 @@ let lastCapture: LastCapture | undefined;
  * `snapframe.capture`: grabs the current selection (or whole file) as
  * syntax-highlighted HTML via the clipboard, and shows it framed (background,
  * padding, shadow, radius, optional window controls and title bar) in a live
- * preview webview. PNG export is not wired yet — that is the next sub-step.
+ * preview webview, with an Export PNG button to rasterise and save it.
  */
 export async function runCapture(context: vscode.ExtensionContext): Promise<void> {
   const editor = vscode.window.activeTextEditor;
@@ -49,7 +52,7 @@ export async function runCapture(context: vscode.ExtensionContext): Promise<void
       return;
     }
     await vscode.env.clipboard.writeText(originalClipboardText);
-    lastCapture = { html: message.html ?? null, fallbackText: source.text, fileName: source.fileName };
+    lastCapture = { html: message.html ?? null, fallbackText: source.text, fileName: source.fileName, startLine: source.startLine };
     sendRender(panel, lastCapture);
     readyDisposable.dispose();
   });
@@ -74,6 +77,63 @@ function ensureConfigListener(context: vscode.ExtensionContext, panel: vscode.We
   });
 }
 
+interface PanelMessage {
+  type: string;
+  html?: string;
+  width?: number;
+  height?: number;
+  fileName?: string;
+  bytes?: string;
+  clipboardAttempted?: boolean;
+  clipboardOk?: boolean;
+}
+
+/**
+ * Saves the PNG bytes the webview rasterised. Writes straight to
+ * `snapframe.exportFolder` when it is set; otherwise asks via `showSaveDialog`
+ * (BUILD.md: "leave empty to be asked each time"). The webview already tried
+ * the clipboard copy (it needs `navigator.clipboard`, which the extension
+ * host does not have) — this only reports the combined outcome.
+ */
+async function exportPng(bytesBase64: string, clipboardAttempted: boolean, clipboardOk: boolean): Promise<void> {
+  if (!lastCapture || !bytesBase64) {
+    return;
+  }
+  const { exportFolder } = readExportSettings();
+  const fileName = buildExportFileName(lastCapture.fileName, lastCapture.startLine);
+
+  let targetUri: vscode.Uri;
+  if (exportFolder) {
+    targetUri = vscode.Uri.file(path.join(exportFolder, fileName));
+  } else {
+    const chosen = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(fileName),
+      filters: { Images: ['png'] },
+    });
+    if (!chosen) {
+      vscode.window.setStatusBarMessage('Snapframe: export cancelled.', 4000);
+      return;
+    }
+    targetUri = chosen;
+  }
+
+  try {
+    await vscode.workspace.fs.writeFile(targetUri, Buffer.from(bytesBase64, 'base64'));
+  } catch (error) {
+    void vscode.window.showErrorMessage(`Snapframe: could not save the PNG — ${String(error)}`);
+    return;
+  }
+
+  const savedMessage = `Snapframe: saved ${targetUri.fsPath}`;
+  if (clipboardAttempted && clipboardOk) {
+    vscode.window.setStatusBarMessage(`${savedMessage} and copied to clipboard.`, 6000);
+  } else if (clipboardAttempted && !clipboardOk) {
+    vscode.window.setStatusBarMessage(`${savedMessage} — clipboard copy wasn't supported here, saved the file instead.`, 6000);
+  } else {
+    vscode.window.setStatusBarMessage(savedMessage, 6000);
+  }
+}
+
 function sendRender(panel: vscode.WebviewPanel, capture: LastCapture): void {
   void panel.webview.postMessage({
     type: 'render',
@@ -95,16 +155,20 @@ function getOrCreatePanel(context: vscode.ExtensionContext): vscode.WebviewPanel
     localResourceRoots: [],
   });
 
-  activePanel.webview.onDidReceiveMessage((message: { type: string; html?: string; width?: number; height?: number; fileName?: string }) => {
-    if (message.type !== 'measured') {
+  activePanel.webview.onDidReceiveMessage((message: PanelMessage) => {
+    if (message.type === 'measured') {
+      const svg = buildFrameSvg(
+        { html: message.html ?? '', width: message.width ?? 0, height: message.height ?? 0 },
+        message.fileName ?? '',
+        readFrameSettings(),
+      );
+      const { scale, copyToClipboardAfterExport } = readExportSettings();
+      void activePanel?.webview.postMessage({ type: 'svg', svg, scale, copyToClipboardAfterExport });
       return;
     }
-    const svg = buildFrameSvg(
-      { html: message.html ?? '', width: message.width ?? 0, height: message.height ?? 0 },
-      message.fileName ?? '',
-      readFrameSettings(),
-    );
-    void activePanel?.webview.postMessage({ type: 'svg', svg });
+    if (message.type === 'export-png') {
+      void exportPng(message.bytes ?? '', message.clipboardAttempted ?? false, message.clipboardOk ?? false);
+    }
   });
 
   activePanel.onDidDispose(() => {
@@ -121,6 +185,7 @@ function renderShell(webview: vscode.Webview): string {
     `default-src 'none'`,
     `style-src ${webview.cspSource} 'unsafe-inline'`,
     `script-src 'nonce-${nonce}'`,
+    `img-src ${webview.cspSource} blob: data:`,
   ].join('; ');
 
   return `<!DOCTYPE html>
@@ -148,10 +213,24 @@ function renderShell(webview: vscode.Webview): string {
     }
     #preview { padding: 16px; overflow: auto; }
     #preview svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+    #toolbar { padding: 0 12px 8px; }
+    #export-btn {
+      display: none;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 4px 10px;
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #fff);
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    #export-btn:disabled { opacity: 0.6; cursor: default; }
   </style>
 </head>
 <body>
   <div id="status">Snapframe — capturing…</div>
+  <div id="toolbar"><button id="export-btn">Export PNG</button></div>
   <div id="paste-target" contenteditable="true"></div>
   <div id="measure"></div>
   <div id="preview"></div>
@@ -161,6 +240,13 @@ function renderShell(webview: vscode.Webview): string {
     const measure = document.getElementById('measure');
     const preview = document.getElementById('preview');
     const status = document.getElementById('status');
+    const exportBtn = document.getElementById('export-btn');
+
+    let lastFileName = '';
+    let lastSvgText = null;
+    let lastDims = null;
+    let lastScale = 2;
+    let lastCopyToClipboard = false;
 
     pasteTarget.addEventListener('paste', (event) => {
       event.preventDefault();
@@ -179,13 +265,86 @@ function renderShell(webview: vscode.Webview): string {
       if (message.type === 'render') {
         renderCapture(message.html, message.fallbackText, message.fileName);
       } else if (message.type === 'svg') {
-        status.textContent = 'Snapframe';
+        status.textContent = 'Snapframe — ' + lastFileName;
         preview.innerHTML = message.svg;
+        lastSvgText = message.svg;
+        lastScale = message.scale || 2;
+        lastCopyToClipboard = !!message.copyToClipboardAfterExport;
+        const dims = message.svg.match(/<svg[^>]*\swidth="(\\d+)"[^>]*\sheight="(\\d+)"/);
+        lastDims = dims ? { width: Number(dims[1]), height: Number(dims[2]) } : null;
+        exportBtn.style.display = lastDims ? 'inline-block' : 'none';
       }
     });
 
+    exportBtn.addEventListener('click', () => { void exportPng(); });
+
+    async function exportPng() {
+      if (!lastSvgText || !lastDims) {
+        return;
+      }
+      exportBtn.disabled = true;
+      const previousStatus = status.textContent;
+      status.textContent = 'Snapframe — exporting…';
+      let objectUrl;
+      try {
+        const svgBlob = new Blob([lastSvgText], { type: 'image/svg+xml' });
+        objectUrl = URL.createObjectURL(svgBlob);
+        const img = new Image();
+        const loaded = new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = () => reject(new Error('image decode failed'));
+        });
+        img.src = objectUrl;
+        await loaded;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(lastDims.width * lastScale));
+        canvas.height = Math.max(1, Math.round(lastDims.height * lastScale));
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        if (!blob) {
+          throw new Error('canvas produced no image data');
+        }
+
+        let clipboardAttempted = false;
+        let clipboardOk = false;
+        if (lastCopyToClipboard) {
+          clipboardAttempted = true;
+          try {
+            if (navigator.clipboard && window.ClipboardItem) {
+              await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+              clipboardOk = true;
+            }
+          } catch (err) {
+            clipboardOk = false;
+          }
+        }
+
+        const buffer = await blob.arrayBuffer();
+        const byteArray = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < byteArray.length; i++) {
+          binary += String.fromCharCode(byteArray[i]);
+        }
+        const base64 = btoa(binary);
+        vscode.postMessage({ type: 'export-png', bytes: base64, clipboardAttempted, clipboardOk });
+        status.textContent = previousStatus;
+      } catch (err) {
+        status.textContent = 'Snapframe — export failed: ' + (err && err.message ? err.message : String(err));
+      } finally {
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+        }
+        exportBtn.disabled = false;
+      }
+    }
+
     function renderCapture(html, fallbackText, fileName) {
       status.textContent = 'Snapframe — ' + fileName;
+      lastFileName = fileName;
+      exportBtn.style.display = 'none';
       measure.innerHTML = '';
       if (html) {
         measure.innerHTML = html;
