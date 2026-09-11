@@ -4,12 +4,12 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 // The webview's JavaScript lives inside a TypeScript template literal in
-// capture/panel.ts. A single backslash there is interpreted by the TS
+// webview/shell.ts. A single backslash there is interpreted by the TS
 // compiler, not the browser: `\s` is a "non-escape character" that compiles to
 // a bare `s`, so a regex like /\swidth/ silently reaches the browser as
 // /swidth/. Only doubled backslashes (`\\s`) survive. This caught a real bug
 // once (the Export PNG button could never appear); this test stops it recurring.
-const panelSource = readFileSync(path.resolve(__dirname, '..', '..', 'src', 'capture', 'panel.ts'), 'utf8');
+const panelSource = readFileSync(path.resolve(__dirname, '..', '..', 'src', 'webview', 'shell.ts'), 'utf8');
 
 function webviewScriptBlock(): string {
   const start = panelSource.indexOf('<script nonce=');
