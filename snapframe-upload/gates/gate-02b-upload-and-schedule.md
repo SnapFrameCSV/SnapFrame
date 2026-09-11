@@ -1,6 +1,6 @@
 # Gate 02b — Put the files on GitHub, and create the scheduled run with the repository attached
 
-- [ ] **Cleared** (ticked by the first scheduled run that reads this file from the repository)
+- [x] **Cleared** (ticked by the first scheduled run that reads this file from the repository) — cleared 2026-09-11 by the first scheduled routine run: repo was reachable (`GET /repos/SnapFrameCSV/snapframe` → 200), files present, push succeeded.
 
 **Time:** about 8–10 minutes · **What you'll reply with:** "gate 02b done" plus the first line of the notification you receive
 
