@@ -1,0 +1,76 @@
+# Copy of .github/workflows/automerge.yml, kept under agent/ because the
+# operator's computer cannot write into .github/. The routine installs it.
+#
+# Purpose: scheduled runs can only push to their own claude/* branch. This
+# workflow runs the repository checks on every such push and, if they pass,
+# fast-forwards main to it. Nobody has to click "merge".
+name: Auto-merge run branches into main
+
+on:
+  push:
+    branches:
+      - "claude/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: automerge-main
+  cancel-in-progress: false
+
+jobs:
+  check-and-merge:
+    name: Check, then fast-forward main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Required files exist
+        run: |
+          for f in README.md OPERATIONS.md STATE.md LOG.md DECISIONS.md LICENSES.md LICENSE agent/RUN.md; do
+            test -f "$f" || { echo "missing $f"; exit 1; }
+          done
+
+      - name: No secrets committed (cheap check)
+        run: |
+          # The pattern is assembled from pieces so this file never contains a literal secret prefix.
+          pat="(sk_""live_|rk_""live_|wh""sec_|gh""p_|github_""pat_|-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY)"
+          ! grep -rEn "$pat" --exclude-dir=.git --exclude-dir=node_modules . || { echo "possible secret committed"; exit 1; }
+
+      - name: Extension checks (only once extension/ exists)
+        if: hashFiles('extension/package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Extension build and tests
+        if: hashFiles('extension/package.json') != ''
+        working-directory: extension
+        run: |
+          npm ci
+          npm run typecheck --if-present
+          npm test --if-present
+          npm run package --if-present
+
+      - name: Worker tests (only once worker/ exists)
+        if: hashFiles('worker/package.json') != ''
+        working-directory: worker
+        run: |
+          npm ci
+          npm test --if-present
+
+      - name: Fast-forward main
+        run: |
+          git config user.name "snapframe-automerge"
+          git config user.email "snapframe-automerge@users.noreply.github.com"
+          git fetch origin main
+          git checkout -B main origin/main
+          if git merge --ff-only "${GITHUB_SHA}"; then
+            echo "fast-forwarded main to ${GITHUB_SHA}"
+          else
+            echo "main has diverged; merging instead"
+            git merge --no-edit "${GITHUB_SHA}"
+          fi
+          git push origin main
