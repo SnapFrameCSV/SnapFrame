@@ -71,3 +71,4 @@ Format: `YYYY-MM-DD HH:MM Sydney | run type | what I did | what I saw | escalate
 2026-10-18 (scheduled; Sydney Sunday) | routine (operate) | No STOP, no snapframe-upload/, no bundle. CI #62 green; metrics #37 green. Zero open Issues/PRs. Gate 03 unticked (33 days). Report W42 written. Next report 2026-10-25.
 2026-10-18 (scheduled, second fire; Sydney Sunday) | routine (operate) | No STOP, no snapframe-upload/, no bundle. Gate 03 unticked (33 days); W42 report already written today. Nothing to do.
 2026-10-20 (scheduled; Sydney Tuesday) | routine (operate) | No STOP, no snapframe-upload/, no bundle. CI #64 green; metrics #39 green. Zero open Issues/PRs. Gate 03 unticked (34 days); nothing else to do. Next report 2026-10-25.
+2026-10-20 (scheduled, second fire; Sydney Tuesday) | routine (operate) | No STOP, no snapframe-upload/, no bundle. CI #65 green; metrics #40 green. Zero open Issues/PRs. Gate 03 unticked (34 days); nothing to do.
