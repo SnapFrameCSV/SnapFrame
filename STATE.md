@@ -9,6 +9,7 @@ Phase 3 — Build. **Slices 1–4 are complete**: the `extension/` skeleton and 
 **Gate 03** (Marketplace publisher) is the next human action, then 05, then 04. Nothing else in `agent/BUILD.md` remains. The interactive session hands the gate files over one at a time (`OPERATIONS.md` "Operator contact"); the routine reminds at most once per 7 days, in the weekly report.
 
 ## Last run
+- 2026-11-06 (scheduled, operate run; Sydney Saturday 7 Nov early): **Nothing to do — healthy, still waiting on gate 03.** CI #79 on 5e041c4 green; metrics #57 green; zero open Issues/PRs. Gate 03 unticked (53 days). Next report due 2026-11-08.
 - 2026-11-05 (scheduled, operate run; Sydney Friday): **Nothing to do — healthy, still waiting on gate 03.** CI #78 on 8a7f5f0 green; metrics #56 green; zero open Issues/PRs. Gate 03 unticked (51 days). Next report due 2026-11-08.
 - 2026-11-03 (scheduled, operate run; Sydney Tuesday): **Nothing to do — healthy, still waiting on gate 03.** CI #77 on c122fda green; metrics #54 green; zero open Issues/PRs. Gate 03 unticked (48 days). Next report due 2026-11-08.
 - 2026-11-02 (scheduled, operate run; Sydney Tuesday early): **Nothing to do — healthy, still waiting on gate 03.** CI #76 on 46ea158 green; metrics #53 green; zero open Issues/PRs. Gate 03 unticked (47 days). Next report due 2026-11-08.
