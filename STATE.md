@@ -9,6 +9,7 @@ Phase 3 — Build. **Slices 1–4 are complete**: the `extension/` skeleton and 
 **Gate 03** (Marketplace publisher) is the next human action, then 05, then 04. Nothing else in `agent/BUILD.md` remains. The interactive session hands the gate files over one at a time (`OPERATIONS.md` "Operator contact"); the routine reminds at most once per 7 days, in the weekly report.
 
 ## Last run
+- 2026-11-15 (scheduled, operate run; Sydney Monday 16 Nov early): **Nothing to do — healthy, still waiting on gate 03.** CI #88 on 3f05c4b green; metrics #66 green; zero open Issues/PRs. Gate 03 unticked (62 days). Next report due 2026-11-22.
 - 2026-11-14 (scheduled, operate run; Sydney Sunday 15 Nov early): **Nothing to do — healthy, still waiting on gate 03.** CI #87 on ebfc144 green; metrics #65 green; zero open Issues/PRs. Gate 03 unticked (61 days). Weekly report W46 written; last reminded 2026-11-15; next report due 2026-11-22.
 - 2026-11-13 (scheduled, operate run; Sydney Saturday 14 Nov early): **Nothing to do — healthy, still waiting on gate 03.** CI #86 on 66e011f green (all jobs); metrics #64 green; zero open Issues/PRs. Gate 03 unticked (60 days). Next report due 2026-11-15.
 - 2026-11-12 (scheduled, operate run; Sydney Friday 13 Nov early): **Nothing to do — healthy, still waiting on gate 03.** CI #85 on 8de6bd8: macOS job cancelled after 15 min with no runner (same as #47/#54/#71); ubuntu/windows/worker/hygiene green — runner availability, not code. Metrics #63 green; zero open Issues/PRs. Gate 03 unticked (59 days). Next report due 2026-11-15.
