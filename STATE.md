@@ -9,6 +9,7 @@ Phase 3 — Build. **Slices 1–4 are complete**: the `extension/` skeleton and 
 **Gate 03** (Marketplace publisher) is the next human action, then 05, then 04. Nothing else in `agent/BUILD.md` remains. The interactive session hands the gate files over one at a time (`OPERATIONS.md` "Operator contact"); the routine reminds at most once per 7 days, in the weekly report.
 
 ## Last run
+- 2026-11-28 (scheduled, operate run; Sydney Saturday 28 Nov early, 17:10 UTC 27 Nov): **Nothing to do — healthy, still waiting on gate 03 (74 days).** No STOP, no snapframe-upload/, no bundle. CI #101 on ee60f62 green; metrics #78 green; zero open Issues/PRs. Next weekly report 2026-11-29.
 - 2026-11-27 (scheduled, operate run; Sydney Friday 27 Nov early, 17:10 UTC 26 Nov): **Nothing to do — healthy, still waiting on gate 03 (73 days).** No STOP, no snapframe-upload/, no bundle. CI #100 on c1fb6aa green; metrics #77 green; zero open Issues/PRs. Next weekly report 2026-11-29.
 - 2026-11-26 (scheduled, operate run; Sydney Thursday 26 Nov early, 17:10 UTC 25 Nov): **Nothing to do — healthy, still waiting on gate 03 (72 days).** No STOP, no snapframe-upload/, no bundle. CI #99 on dec6d44 green; metrics #76 green; zero open Issues/PRs. Next weekly report 2026-11-29.
 - 2026-11-25 (scheduled, operate run; Sydney Wednesday 25 Nov early, 17:10 UTC 24 Nov): **Nothing to do — healthy, still waiting on gate 03 (71 days).** No STOP, no snapframe-upload/, no bundle. CI #98 on bd96ed4 green; metrics #75 green; zero open Issues/PRs. Next weekly report 2026-11-29.
